@@ -115,7 +115,13 @@ try:
 except Exception as e:
     print('board error', e)
 
-latest = {'run_at': run_at, 'cal': cal, 'tp_ow': tp['ow'], 'tp_rt': tp['rt'],
+# flight times / airlines per day (from the day-by-day search), {route: {day: {any:{p,dep,arr,arr_day,min,stops,al}, direct:{...}}}}
+det = {}
+for f in glob.glob(os.path.join(cal_dir, '*-details.json')):
+    o, d, _ = os.path.basename(f).split('-')
+    det[f'{o}-{d}'] = {k: v for k, v in json.load(open(f)).items() if k >= str(today)}
+
+latest = {'run_at': run_at, 'cal': cal, 'det': det, 'tp_ow': tp['ow'], 'tp_rt': tp['rt'],
           'prev_run_at': prev.get('run_at'), 'prev_cal': prev.get('cal', {})}
 
 

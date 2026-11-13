@@ -9,7 +9,7 @@ FLI = os.environ.get('FLI', 'fli')
 final = sys.argv[1] if len(sys.argv) > 1 else 'cal'
 out = final + '.new'
 os.makedirs(out, exist_ok=True)
-for f in glob.glob(os.path.join(out, '*.txt')):
+for f in glob.glob(os.path.join(out, '*.txt')) + glob.glob(os.path.join(out, '*.json')):
     os.remove(f)
 
 today = datetime.date.today()
@@ -53,6 +53,19 @@ for o, d in routes:
 from concurrent.futures import ThreadPoolExecutor
 
 
+def pick(f):
+    legs = f.get('legs') or []
+    al = []
+    for l in legs:
+        n = (l.get('airline') or {}).get('name') or (l.get('airline') or {}).get('code')
+        if n and n not in al:
+            al.append(n)
+    return {'p': round(f['price']), 'dep': (legs[0].get('departure_time') or '')[11:16] if legs else '',
+            'arr': (legs[-1].get('arrival_time') or '')[11:16] if legs else '',
+            'arr_day': (legs[-1].get('arrival_time') or '')[:10] if legs else '',
+            'min': f.get('duration'), 'stops': f.get('stops', len(legs) - 1), 'al': ', '.join(al)}
+
+
 def day_search(args):
     o, d, day = args
     for attempt in range(4):
@@ -63,10 +76,13 @@ def day_search(args):
         except Exception:
             js = None
         if js and js.get('success'):
-            ps = [(f['price'], f.get('stops', 9)) for f in js.get('flights', []) if f.get('price')]
-            anyp = min((p for p, _ in ps), default=None)
-            dirp = min((p for p, st in ps if st == 0), default=None)
-            return day, anyp, dirp
+            fl = [f for f in js.get('flights', []) if f.get('price')]
+            if not fl and attempt < 2:
+                time.sleep(8)  # Google sometimes answers with an empty list; ask again before trusting it
+                continue
+            best = min(fl, key=lambda f: f['price'], default=None)
+            bestd = min((f for f in fl if f.get('stops', 9) == 0), key=lambda f: f['price'], default=None)
+            return day, (pick(best) if best else None), (pick(bestd) if bestd else None)
         time.sleep(20 * (attempt + 1))
     return day, None, None
 
@@ -83,21 +99,35 @@ def write(o, d, kind, prices):
 
 
 days = [str(start + datetime.timedelta(days=i)) for i in range((end - start).days + 1)]
+
+
+def read_cal(o, d, kind):
+    p = os.path.join(out, f'{o}-{d}-{kind}.txt')
+    if not os.path.exists(p):
+        return {}
+    lines = open(p).read().split('\n')
+    s0 = datetime.date.fromisoformat(lines[0].strip())
+    return {str(s0 + datetime.timedelta(days=i)): int(v) for i, v in enumerate(' '.join(lines[1:]).split()) if int(v)}
+
+
 for o, d in routes:
-    if 'CPH' in (o, d):
-        continue  # the calendar search is complete for Copenhagen
     t0 = time.time()
     with ThreadPoolExecutor(3) as ex:
         res = list(ex.map(day_search, [(o, d, day) for day in days]))
-    anyp = {day: round(a / 10) for day, a, _ in res if a}
-    dirp = {day: round(x / 10) for day, _, x in res if x}
+    det = {day: {k: v for k, v in (('any', a), ('direct', x)) if v} for day, a, x in res if a or x}
     failed = sum(1 for _, a, x in res if a is None and x is None)
-    write(o, d, 'any', anyp)
-    if dirp:
-        write(o, d, 'direct', dirp)
-    elif os.path.exists(os.path.join(out, f'{o}-{d}-direct.txt')):
-        os.remove(os.path.join(out, f'{o}-{d}-direct.txt'))
-    print(o, d, 'day by day:', len(anyp), 'days priced,', len(dirp), 'direct,', failed, 'empty/failed,', int(time.time() - t0), 's', flush=True)
+    # prices: day-by-day result, with the calendar price as fallback for days the day search missed
+    for kind in ['any', 'direct']:
+        prices = read_cal(o, d, kind)
+        for day, v in det.items():
+            if kind in v:
+                prices[day] = round(v[kind]['p'] / 10)
+        if prices:
+            write(o, d, kind, prices)
+    with open(os.path.join(out, f'{o}-{d}-details.json'), 'w') as f:
+        json.dump(det, f, separators=(',', ':'))
+    print(o, d, 'day by day:', len(det), 'days with flights,', sum(1 for v in det.values() if 'direct' in v), 'direct,',
+          failed, 'empty/failed,', int(time.time() - t0), 's', flush=True)
 
 # Only replace the old calendars if this run got most routes (a Google rate limit can make a run fail)
 got = glob.glob(os.path.join(out, '*-any.txt'))
@@ -105,7 +135,9 @@ if len(got) >= 6:
     os.makedirs(final, exist_ok=True)
     for f in glob.glob(os.path.join(final, '*.txt')):
         os.remove(f)
-    for f in glob.glob(os.path.join(out, '*.txt')):
+    for f in glob.glob(os.path.join(final, '*.json')):
+        os.remove(f)
+    for f in glob.glob(os.path.join(out, '*.txt')) + glob.glob(os.path.join(out, '*.json')):
         os.replace(f, os.path.join(final, os.path.basename(f)))
     print('calendars updated')
 else:

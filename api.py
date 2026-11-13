@@ -108,11 +108,15 @@ class H(BaseHTTPRequestHandler):
             return self.reply(403, {'error': 'forbidden'})
         try:
             n = int(self.headers.get('Content-Length', 0))
-            if n > 400000:
+            if n > 4000000:
                 raise ValueError('too big')
             files = json.loads(self.rfile.read(n))['files']
             ok = {}
             for name, text in files.items():
+                if re.fullmatch(r'(CPH|BLL|AAL|HAM|KEF)-(CPH|BLL|AAL|HAM|KEF)-details\.json', name):
+                    json.loads(text)  # flight times/airlines per day
+                    ok[name] = text
+                    continue
                 if not re.fullmatch(r'(CPH|BLL|AAL|HAM|KEF)-(CPH|BLL|AAL|HAM|KEF)-(any|direct)\.txt', name):
                     raise ValueError('bad name ' + name[:30])
                 lines = text.strip().split('\n')
