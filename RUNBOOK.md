@@ -1,39 +1,11 @@
-# Iceland Flight Watch – daily run
+# Iceland Flight Watch
 
-Goal: find cheap round trips between Denmark/Hamburg (CPH, BLL, AAL, HAM) and Keflavík (KEF), stays of 1–6 months, out and home airports may differ. Direct flights matter most, but all options are kept.
+Public page: https://fly.strømsparer.dk (Hetzner server 89.167.101.11, Caddy, `/srv/flight-watch`).
 
-The page is the artifact `2c33bbd4-6671-4e58-a0df-75451bdeaf69` (https://claude.ai/artifact/6TabPgGja1bzhVvDhkTsvY). It reads `site/data/*.json`.
+## How data is updated
+- **Cloud task (twice a day):** runs `fetch_gf.py cal` (Google Flights calendars via the open-source `fli` tool, `pip install flights click typer rich`), then `UPLOAD_TOKEN=... python3 upload.py cal`, which posts the calendars to `https://fly.xn--strmsparer-2cb.dk/api/cal`. Google blocks these requests from the Hetzner server (HTTP 429), so this part runs in the cloud.
+- **Server (`/opt/flight-watch`):** `api.py` (systemd `flight-watch-api`, 127.0.0.1:8092, Caddy `/api/*`) stores uploads and watches. `run.sh` (systemd `flight-watch.service`, timer 4×/day and after each upload) runs `tp.py` (Travelpayouts) and `build.py` (Keflavík board, changes, watches) into `/srv/flight-watch/data`.
+- Secrets live in `/opt/flight-watch/.env` (TP_TOKEN, WATCH_PIN, UPLOAD_TOKEN), not in git.
 
-## Steps
-
-1. **Google Flights calendars (Claude in Chrome).** For each file below, open the URL in a new Chrome tab, run `chrome/gf_cal.js` with the javascript tool (it opens the date calendar, steps through ~11 months and stores the result in `window.GFA`; it returns `<start date> n=<days> nonzero=<days with a price>`). Then read the prices in three parts: `window.GFA.a.slice(0,120).join(' ')`, `slice(120,240)`, `slice(240)`. Write the file as: line 1 = start date, then the numbers (price in DKK / 10, 0 = no flight).
-   - If `nonzero` is far below `n` for an "any" route, months were skipped: run it again once.
-   - If the result is `none` (no flights), do not write a file.
-   - Close the tab at the end.
-
-   | file | URL (`q=` part, prefix `https://www.google.com/travel/flights?hl=en&curr=DKK&q=`) |
-   |---|---|
-   | cal/CPH-KEF-any.txt | one way flights from CPH to KEF on <today+7> |
-   | cal/CPH-KEF-direct.txt | nonstop one way flights from CPH to KEF on <today+7> |
-   | same for BLL, AAL, HAM → KEF (any + direct) | |
-   | cal/KEF-CPH-any.txt | one way flights from KEF to CPH on <today+7> |
-   | cal/KEF-CPH-direct.txt | nonstop one way flights from KEF to CPH on <today+7> |
-   | same for KEF → BLL, AAL, HAM (any + direct) | |
-
-   That is 16 calendars. Delete old `cal/*.txt` first so a route with no flights today does not reuse old prices.
-
-   The script clicks the calendar's "next month" arrow at viewport point (1088, 414). If the Chrome window has another size and the calendar doesn't advance (`n` around 60), take a screenshot, find the arrow, and change the two coordinates in the script.
-
-2. **Travelpayouts:** `TP_TOKEN=<token> python3 tp.py` → `tp.json` (takes ~20 s).
-
-3. **Build:** `python3 build.py cal tp.json site/data` – updates `latest.json`, `changes.json`, `board.json` (Keflavík flight board: delays/cancellations), `lows.json`, `summary.json`, `index.json`, and archives `site/data/runs/<time>.json`. The last line printed is `SUMMARY {...}`.
-
-4. **Save:** commit and push to `main`.
-
-5. **Publish:** `publish_files` to the artifact above, mode `patch`, files `index.html` (as `index.html`) and `site/data/latest.json, changes.json, board.json, index.json, summary.json` (as `data/<name>`).
-
-5b. **Server (public page https://fly.strømsparer.dk):** pack `site/index.html` and `site/data/{latest,changes,board,index,summary}.json` into `flight-watch-site.tar.gz` (paths `index.html`, `data/...`), put it in `/mnt/user-data/outputs/`, copy it to the PC with `device_commit_files` into `C:\Users\sen.makj\Downloads\sport-tv-deploy\`, then in `device_bash`:
-    `cp $HOME/mnt/sport-tv-deploy/id_ed25519 $HOME/k && chmod 600 $HOME/k && scp -i $HOME/k -o BatchMode=yes -o StrictHostKeyChecking=accept-new $HOME/mnt/sport-tv-deploy/flight-watch-site.tar.gz root@89.167.101.11:/tmp/ && ssh -i $HOME/k -o BatchMode=yes root@89.167.101.11 'tar xzf /tmp/flight-watch-site.tar.gz -C /srv/flight-watch && chmod -R a+rX /srv/flight-watch'`
-    Caddy serves `/srv/flight-watch` from `/etc/caddy/flight-watch.caddy` (imported in the Caddyfile). Do not touch the rest of the Caddyfile.
-
-6. **Report** in 2–3 short sentences: cheapest round trip (any) and cheapest direct, with dates and airports, and say if either is lower than before (`any_before` / `direct_before` in the summary) or if there are big price drops.
+## Deploy code changes
+Copy changed files to `/opt/flight-watch` (page: `site/index.html` → `/srv/flight-watch/index.html`) with the deploy key in `Downloads\sport-tv-deploy` on Martin's PC.

@@ -166,3 +166,8 @@ for k in ['any', 'direct']:
     summ[k + '_before'] = o
 dump('summary.json', summ)
 print('SUMMARY', json.dumps(summ))
+
+# ---- price watches ----
+import watches
+ws = watches.update(os.environ.get('WATCH_FILE', 'watches.json'), data, run_at, cal)
+print('watches', len(ws))

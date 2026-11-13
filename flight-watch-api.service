@@ -1,0 +1,12 @@
+[Unit]
+Description=Iceland Flight Watch API (watches + calendar upload)
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/flight-watch
+EnvironmentFile=/opt/flight-watch/.env
+ExecStart=/opt/flight-watch/venv/bin/python /opt/flight-watch/api.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
