@@ -47,6 +47,58 @@ for o, d in routes:
             f.write(ks[0] + '\n' + ' '.join(map(str, vals)) + '\n')
         print(o, d, kind, ks[0], n, 'days', sum(1 for v in vals if v), 'priced')
 
+# ---- Fill gaps day by day for the smaller airports ----
+# fli's calendar search skips many days on thin routes (Billund, Aalborg, Hamburg),
+# so ask Google about each day: one search gives both the cheapest price and the cheapest direct price.
+from concurrent.futures import ThreadPoolExecutor
+
+
+def day_search(args):
+    o, d, day = args
+    for attempt in range(4):
+        r = subprocess.run([FLI, 'flights', o, d, day, '--stops', 'ANY', '--currency', 'DKK', '--format', 'json'],
+                           capture_output=True, text=True, timeout=120)
+        try:
+            js = json.loads(r.stdout)
+        except Exception:
+            js = None
+        if js and js.get('success'):
+            ps = [(f['price'], f.get('stops', 9)) for f in js.get('flights', []) if f.get('price')]
+            anyp = min((p for p, _ in ps), default=None)
+            dirp = min((p for p, st in ps if st == 0), default=None)
+            return day, anyp, dirp
+        time.sleep(20 * (attempt + 1))
+    return day, None, None
+
+
+def write(o, d, kind, prices):
+    if not prices:
+        return
+    ks = sorted(prices)
+    d0 = datetime.date.fromisoformat(ks[0])
+    n = (datetime.date.fromisoformat(ks[-1]) - d0).days + 1
+    vals = [prices.get(str(d0 + datetime.timedelta(days=i)), 0) for i in range(n)]
+    with open(os.path.join(out, f'{o}-{d}-{kind}.txt'), 'w') as f:
+        f.write(ks[0] + '\n' + ' '.join(map(str, vals)) + '\n')
+
+
+days = [str(start + datetime.timedelta(days=i)) for i in range((end - start).days + 1)]
+for o, d in routes:
+    if 'CPH' in (o, d):
+        continue  # the calendar search is complete for Copenhagen
+    t0 = time.time()
+    with ThreadPoolExecutor(3) as ex:
+        res = list(ex.map(day_search, [(o, d, day) for day in days]))
+    anyp = {day: round(a / 10) for day, a, _ in res if a}
+    dirp = {day: round(x / 10) for day, _, x in res if x}
+    failed = sum(1 for _, a, x in res if a is None and x is None)
+    write(o, d, 'any', anyp)
+    if dirp:
+        write(o, d, 'direct', dirp)
+    elif os.path.exists(os.path.join(out, f'{o}-{d}-direct.txt')):
+        os.remove(os.path.join(out, f'{o}-{d}-direct.txt'))
+    print(o, d, 'day by day:', len(anyp), 'days priced,', len(dirp), 'direct,', failed, 'empty/failed,', int(time.time() - t0), 's', flush=True)
+
 # Only replace the old calendars if this run got most routes (a Google rate limit can make a run fail)
 got = glob.glob(os.path.join(out, '*-any.txt'))
 if len(got) >= 6:
