@@ -118,32 +118,21 @@ select,input[type=number],input[type=date],input[type=text],input[type=password]
 /* calendar */
 .legend{display:flex;gap:8px 14px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:0 0 12px}
 .legend i{display:inline-block;width:16px;height:12px;border-radius:4px;vertical-align:-1px;margin-right:5px}
-.months{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(720px,100%),1fr));gap:12px}
+.months{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .month{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:12px}
-.month h3{margin:0 0 8px;font-size:15px;font-weight:700;display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.month h3{margin:0 0 8px;font-size:15px;font-weight:700;display:flex;justify-content:space-between}
 .month h3 span{font-weight:500;color:var(--muted);font-size:13px}
-.month h3 span b{color:var(--ink);font-weight:600}
-.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
-.grid .dow{color:var(--muted);font-size:12px;text-align:center;padding-bottom:2px}
-.grid .c{border-radius:8px;padding:3px;display:flex;flex-direction:column;gap:2px;background:var(--bg);min-width:0}
-.grid .c>b{font-size:11px;font-weight:500;color:var(--muted);padding-left:3px}
-.pp{position:relative;display:block;border-radius:6px;padding:3px 6px;font-size:13px;font-weight:600;color:var(--ink);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:clip;line-height:1.35}
-.pp s{text-decoration:none;font-weight:500;font-size:10px;color:var(--muted)}
-.pp i{font-style:normal;font-size:9px;margin-left:2px}
-.pp em{display:none;font-style:normal;font-weight:500;font-size:11px;color:var(--muted)}
-.pp.low{box-shadow:inset 0 0 0 2px var(--lupine)}
-.pp.none{color:var(--muted);opacity:.45;font-weight:400}
-a.pp:hover{filter:brightness(.95)}
-.dlist{display:none}
-.drow{display:grid;grid-template-columns:58px 1fr 1fr;gap:6px;align-items:center;padding:3px 0}
-.drow.mon{border-top:1px solid var(--line);margin-top:3px;padding-top:6px}
-.drow .dd{font-size:13px;color:var(--muted)}.drow .dd b{color:var(--ink);font-weight:600}
-.drow .pp{font-size:15px;padding:0 10px;min-height:40px;display:flex;align-items:center;gap:5px;border-radius:var(--r-md)}
-.drow .pp{flex-direction:column;align-items:stretch;justify-content:center;gap:0;padding:4px 10px}
-.drow .pp .pl{display:flex;align-items:center;gap:5px}
-.drow .pp em{display:block;line-height:1.2;white-space:normal}
-.drow .pp s{font-size:12px}.drow .pp i{font-size:11px;margin-left:auto}
-@media (max-width:700px){.grid{display:none}.dlist{display:block}}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center}
+.grid .dow{color:var(--muted);font-size:12px;padding-bottom:2px}
+.grid .c{border-radius:8px;min-height:46px;padding:4px 0 3px;display:flex;flex-direction:column;justify-content:space-between;text-decoration:none;color:var(--ink);position:relative}
+.grid .c b{font-size:12px;font-weight:500;color:var(--muted)}
+.grid .c span{font-size:12px;font-weight:600;letter-spacing:-.02em}
+.grid .c.low{outline:2px solid var(--lupine);outline-offset:-2px}
+.grid .c.low span{color:var(--lupine)}
+.grid .c i{position:absolute;top:2px;right:3px;font-size:9px;font-style:normal}
+.grid .c.none b{opacity:.5}
+.grid .c em{font-style:normal;font-size:10px;font-weight:500;color:var(--muted);line-height:1}
+
 /* delays */
 .air{display:grid;gap:8px;margin-bottom:22px}
 .arow{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:12px 16px;display:grid;grid-template-columns:1fr auto;gap:6px 14px;align-items:center}
@@ -223,7 +212,7 @@ const lnk=(href,label,cls='')=>`<a class="${cls}" href="${esc(href)}" target="_b
 let L=null,CH=[],BOARD=[],WATCH=[],BAGS=null,view='trips';
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}};const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
 const st={bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),minM:1,maxM:6,stops:'direct',from:'',to:'',maxp:'',
-  calApt:new Set(APTS),calDirect:true,chDir:'both',chWhat:'drops',limit:40,open:matchMedia('(min-width:900px)').matches};
+  route:'ALL-KEF',kind:'direct',chDir:'both',chWhat:'drops',limit:40,open:matchMedia('(min-width:900px)').matches};
 
 function series(route,kind,prev){const src=prev?L.prev_cal:L.cal;const c=src?.[route]?.[kind];const m=new Map();if(!c)return m;let d=c.start;c.p.forEach(v=>{if(v)m.set(d,v);d=add(d,1)});return m;}
 const hasPrev=()=>!!L.prev_cal;
@@ -263,7 +252,11 @@ function drawFilters(){
   } else if(view==='watch'){
     h+=`<div class="bar">${bagSw()}</div>${bagNote()}`+watchForm();
   } else if(view==='cal'){
-    h+=`<div class="bar"><div class="chips" data-set="calApt" role="group" aria-label="Airports">${APTS.map(v=>`<label><input type="checkbox" value="${v}" ${st.calApt.has(v)?'checked':''}><span>${v}</span></label>`).join('')}</div><label class="sw"><input type="checkbox" id="calDirect" ${st.calDirect?'checked':''}>Direct only</label></div>`;
+    const routes=Object.keys(L.cal).sort((a,b)=>(a.startsWith('KEF')-b.startsWith('KEF'))||a.localeCompare(b));
+    const kinds=st.route.includes('ALL')?['any','direct']:Object.keys(L.cal[st.route]||{});if(!kinds.includes(st.kind))st.kind='any';
+    const opt=(v,l)=>`<option value="${v}" ${v===st.route?'selected':''}>${l}</option>`;
+    h+=`<div class="bar"><select id="route" aria-label="Route" style="flex:1;max-width:360px">${opt('ALL-KEF','All airports → Keflavík')}${opt('KEF-ALL','Keflavík → all airports')}${routes.map(r=>opt(r,`${NAME[r.split('-')[0]]} → ${NAME[r.split('-')[1]]}`)).join('')}</select>`+
+      (kinds.includes('direct')?`<label class="sw"><input type="checkbox" id="calDirect" ${st.kind==='direct'?'checked':''}>Direct only</label>`:`<span class="sub">No direct flights on this route</span>`)+`</div>`;
   } else if(view==='changes'){
     h+=`<div class="bar">${seg('chWhat',[['drops','Price drops'],['all','All changes']],st.chWhat,'Show')}</div>`;
     h+=more(radios('chDir','Direction',[['both','Both'],['to','To Iceland'],['from','From Iceland']],st.chDir)+chips('out','Danish or German airport',APTS,st.out));
@@ -278,7 +271,8 @@ function drawFilters(){
   ['minM','maxM','from','to','maxp'].forEach(id=>{const e=$(id);if(e)e.oninput=()=>{st[id]=e.value;upd()}});
   const ds=$('directSw');if(ds)ds.onchange=()=>{st.stops=ds.checked?'direct':'any';upd()};
   const bs=$('bagSw');if(bs)bs.onchange=()=>{st.bag=bs.checked;lsSet('ifw_bag',st.bag?'1':'0');drawFilters();render()};
-  const cd=$('calDirect');if(cd)cd.onchange=()=>{st.calDirect=cd.checked;render()};
+  const cd=$('calDirect');if(cd)cd.onchange=()=>{st.kind=cd.checked?'direct':'any';render()};
+  const rs=$('route');if(rs)rs.onchange=()=>{st.route=rs.value;drawFilters();render()};
   const m=$('more');if(m)m.ontoggle=()=>{st.open=m.open};
   if(view==='watch')wireWatchForm();
 }
@@ -367,38 +361,33 @@ function renderOneWay(){
 }
 
 // ---------- price calendar ----------
+// One route, or "All": the cheapest airport each day (to Iceland or from Iceland)
+function calSeries(prev){
+  const [o,d]=st.route.split('-');
+  if(o!=='ALL'&&d!=='ALL'){const m=series(st.route,st.kind,prev),r=new Map();m.forEach((v,k)=>r.set(k,{v,o,d}));return r;}
+  const r=new Map();
+  for(const a of APTS){const oo=o==='ALL'?a:'KEF',dd=d==='ALL'?a:'KEF';
+    series(`${oo}-${dd}`,st.kind,prev).forEach((v,k)=>{const c=r.get(k);if(!c||v<c.v)r.set(k,{v,o:oo,d:dd})});}
+  return r;
+}
 function renderCal(){
-  const direct=st.calDirect,kind=direct?'direct':'any',today=iso(new Date());
-  // per direction: date -> {p, apt, prev (cheapest last check across same airports)}
-  const build=to=>{const m=new Map(),pm=new Map();
-    for(const a of st.calApt){const route=to?`${a}-KEF`:`KEF-${a}`;
-      for(const [d,p] of series(route,kind)){if(d<today)continue;const x=m.get(d);if(!x||p<x.p)m.set(d,{p,apt:a,o:to?a:'KEF',d:to?'KEF':a});}
-      for(const [d,p] of series(route,kind,true)){if(!pm.has(d)||p<pm.get(d))pm.set(d,p);}}
-    for(const [d,x] of m)x.prev=pm.get(d);
-    const vals=[...m.values()].map(x=>x.p).sort((a,b)=>a-b),q=f=>vals[Math.floor(f*(vals.length-1))];
-    return {m,low:vals[0],c:[q(.2),q(.5),q(.8)]};};
-  const T=build(true),F=build(false);
-  if(!st.calApt.size||(!T.m.size&&!F.m.size)){$('view').innerHTML=empty('No prices for these airports.',direct?'Only Copenhagen and Billund have direct flights. Pick one of them or turn off Direct only.':'Pick at least one airport.');return;}
-  const col=(v,S)=>v<=S.c[0]?'var(--cheap1)':v<=S.c[1]?'var(--cheap2)':v<=S.c[2]?'var(--dear1)':'var(--dear2)';
-  const pill=(ds,S,to)=>{const x=S.m.get(ds),ar=to?'→':'←';if(!x)return `<span class="pp none" aria-label="No flight ${to?'to':'from'} Iceland">${ar} –</span>`;
-    const ch=x.prev&&x.prev!==x.p?(x.p<x.prev?'<i class="down">▼</i>':'<i class="up">▲</i>'):'';
-    const dx=det(x.o,x.d,ds,direct),dt=detTxt(dx,ds);
-    return `<a class="pp${x.p===S.low?' low':''}" style="background:${col(x.p,S)}" href="${gf(x.o,x.d,ds,direct)}" target="_blank" rel="noopener" title="${fd(ds)}, ${x.o} to ${x.d}: ${KR(x.p)}${x.prev&&x.prev!==x.p?' (was '+KR(x.prev)+')':''}${dt?'\n'+esc(dt):''}" aria-label="${fd(ds)}, ${to?'to':'from'} Iceland ${x.o} to ${x.d}, ${KR(x.p)}${dt?', '+esc(dt):''}"><span class="pl">${ar} ${kr(x.p)} <s>${x.apt}</s>${ch}</span>${dx&&dx.dep?`<em>${times(dx,ds)} ${esc(dur(dx.min))}</em>`:''}</a>`;};
-  const keys=[...new Set([...T.m.keys(),...F.m.keys()])].sort();
-  const months=[];let m=keys[0].slice(0,7);while(m<=keys[keys.length-1].slice(0,7)){months.push(m);const dd=D(m+'-01');dd.setUTCMonth(dd.getUTCMonth()+1);m=iso(dd).slice(0,7);}
-  const k0=keys[0],skip=Math.max(0,+k0.slice(8)-1-(D(k0).getUTCDay()+6)%7);
-  const mmin=(S,mm)=>{let v=null;for(const [d,x] of S.m)if(d.startsWith(mm)&&(v==null||x.p<v))v=x.p;return v};
-  const html=months.map((mm,mi)=>{const first=D(mm+'-01'),s0=mi?0:skip,off=s0?0:(first.getUTCDay()+6)%7;
-    let cells=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x=>`<div class="dow" aria-hidden="true">${x}</div>`).join('')+'<div></div>'.repeat(off),rows='';
-    for(let day=s0+1;day<=31;day++){const ds=`${mm}-${String(day).padStart(2,'0')}`;if(D(ds).getUTCMonth()!==first.getUTCMonth())break;
-      if(ds<today&&!T.m.has(ds)&&!F.m.has(ds)){cells+=`<div class="c" style="opacity:.4"><b>${day}</b></div>`;continue;}
-      const a=pill(ds,T,true),b=pill(ds,F,false);
-      cells+=`<div class="c"><b>${day}</b>${a}${b}</div>`;
-      rows+=`<div class="drow${D(ds).getUTCDay()===1?' mon':''}"><span class="dd">${D(ds).toLocaleDateString('en-GB',{weekday:'short'})} <b>${day}</b></span>${a}${b}</div>`;}
-    const t=mmin(T,mm),f=mmin(F,mm);
-    return `<section class="month"><h3>${first.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}<span>${t?`→ from <b>${KR(t)}</b>`:''}${t&&f?'&ensp;':''}${f?`← from <b>${KR(f)}</b>`:''}</span></h3><div class="grid">${cells}</div><div class="dlist">${rows}</div></section>`}).join('');
-  $('view').innerHTML=`<div class="lead"><span>Cheapest ${direct?'direct ':''}one-way price each day from ${[...st.calApt].join(', ')}. Lowest to Iceland <b style="color:var(--lupine)">${KR(T.low)}</b>, from Iceland <b style="color:var(--lupine)">${KR(F.low)}</b></span></div>
-  <div class="legend"><span><b>→</b> To Iceland</span><span><b>←</b> From Iceland</span><span><i style="background:var(--cheap1)"></i>Cheapest fifth</span><span><i style="background:var(--dear2)"></i>Priciest fifth</span><span><i style="box-shadow:inset 0 0 0 2px var(--lupine)"></i>Lowest</span><span><b class="down">▼</b> <b class="up">▲</b> Since last check</span><span>Tap a price to open Google Flights</span></div>
+  const [o,d]=st.route.split('-'),all=o==='ALL'||d==='ALL',direct=st.kind==='direct';
+  const cur=calSeries(false),prev=calSeries(true);
+  if(!cur.size){$('view').innerHTML=empty('No prices for this route yet.','Pick another route above.');return;}
+  const vals=[...cur.values()].map(x=>x.v).sort((a,b)=>a-b),q=p=>vals[Math.floor(p*(vals.length-1))],c1=q(.2),c2=q(.5),c3=q(.8),low=vals[0];
+  const col=v=>v<=c1?'var(--cheap1)':v<=c2?'var(--cheap2)':v<=c3?'var(--dear1)':'var(--dear2)';
+  const keys=[...cur.keys()].sort();const months=[];let m=keys[0].slice(0,7);while(m<=keys[keys.length-1].slice(0,7)){months.push(m);const dd=D(m+'-01');dd.setUTCMonth(dd.getUTCMonth()+1);m=iso(dd).slice(0,7);}
+  const k0=keys[0],skip=k0.slice(0,7)===months[0]?Math.max(0,+k0.slice(8)-1-(D(k0).getUTCDay()+6)%7):0;
+  const html=months.map((mm,mi)=>{const first=D(mm+'-01'),s0=mi?0:skip,off=s0?0:(first.getUTCDay()+6)%7;let cells=['M','T','W','T','F','S','S'].map(x=>`<div class="dow" aria-hidden="true">${x}</div>`).join('')+'<div></div>'.repeat(off);let mlow=null;
+    for(let day=s0+1;day<=31;day++){const ds=`${mm}-${String(day).padStart(2,'0')}`;if(D(ds).getUTCMonth()!==first.getUTCMonth())break;const c=cur.get(ds),v=c?.v,pv=prev.get(ds)?.v;
+      if(v&&(mlow==null||v<mlow))mlow=v;
+      const arrow=v&&pv&&v!==pv?(v<pv?'<i class="down">▼</i>':'<i class="up">▲</i>'):'';
+      const x=c?det(c.o,c.d,ds,direct):null,info=x?', '+detTxt(x,ds):'',apt=c?(c.o==='KEF'?c.d:c.o):'';
+      cells+=v?`<a class="c${v===low?' low':''}" style="background:${col(v)}" href="${gf(c.o,c.d,ds,direct)}" target="_blank" rel="noopener" title="${fd(ds)}: ${KR(v)}, ${c.o} → ${c.d}${esc(info)}${pv&&pv!==v?' (was '+KR(pv)+')':''}" aria-label="${fd(ds)}, ${KR(v)}, ${c.o} to ${c.d}"><b>${day}</b><span>${kr(v)}</span>${all?`<em>${apt}</em>`:''}${arrow}</a>`:`<div class="c none"><b>${day}</b></div>`;}
+    return `<section class="month"><h3>${D(mm+'-01').toLocaleDateString('en-GB',{month:'long',year:'numeric'})}${mlow?`<span>from ${KR(mlow)}</span>`:''}</h3><div class="grid">${cells}</div></section>`}).join('');
+  const what=o==='ALL'?'from any airport to Keflavík':d==='ALL'?'from Keflavík to any airport':`${NAME[o]} → ${NAME[d]}`;
+  $('view').innerHTML=`<div class="lead"><span>Cheapest ${direct?'direct ':''}one-way price each day, ${what}${all?' (the airport is shown under the price)':''}. Lowest: <b style="color:var(--lupine)">${KR(low)}</b></span></div>
+  <div class="legend"><span><i style="background:var(--cheap1)"></i>Cheapest fifth</span><span><i style="background:var(--dear2)"></i>Priciest fifth</span><span><i style="outline:2px solid var(--lupine);outline-offset:-2px"></i>Lowest price</span><span><b class="down">▼</b> <b class="up">▲</b> Changed since last check</span><span>Tap a day to open Google Flights</span></div>
   <div class="months">${html}</div>`;
 }
 
