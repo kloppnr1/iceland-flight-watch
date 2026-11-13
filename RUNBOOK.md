@@ -32,4 +32,8 @@ The page is the artifact `2c33bbd4-6671-4e58-a0df-75451bdeaf69` (https://claude.
 
 5. **Publish:** `publish_files` to the artifact above, mode `patch`, files `index.html` (as `index.html`) and `site/data/latest.json, changes.json, board.json, index.json, summary.json` (as `data/<name>`).
 
+5b. **Server (public page https://fly.strømsparer.dk):** pack `site/index.html` and `site/data/{latest,changes,board,index,summary}.json` into `flight-watch-site.tar.gz` (paths `index.html`, `data/...`), put it in `/mnt/user-data/outputs/`, copy it to the PC with `device_commit_files` into `C:\Users\sen.makj\Downloads\sport-tv-deploy\`, then in `device_bash`:
+    `cp $HOME/mnt/sport-tv-deploy/id_ed25519 $HOME/k && chmod 600 $HOME/k && scp -i $HOME/k -o BatchMode=yes -o StrictHostKeyChecking=accept-new $HOME/mnt/sport-tv-deploy/flight-watch-site.tar.gz root@89.167.101.11:/tmp/ && ssh -i $HOME/k -o BatchMode=yes root@89.167.101.11 'tar xzf /tmp/flight-watch-site.tar.gz -C /srv/flight-watch && chmod -R a+rX /srv/flight-watch'`
+    Caddy serves `/srv/flight-watch` from `/etc/caddy/flight-watch.caddy` (imported in the Caddyfile). Do not touch the rest of the Caddyfile.
+
 6. **Report** in 2–3 short sentences: cheapest round trip (any) and cheapest direct, with dates and airports, and say if either is lower than before (`any_before` / `direct_before` in the summary) or if there are big price drops.
