@@ -34,12 +34,12 @@ h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.02em}
 h1 .k{color:var(--lupine)}
 .status{color:var(--muted);font-size:13px}
 nav{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-nav .in{max-width:1120px;margin:0 auto;padding:0 8px;display:grid;grid-template-columns:repeat(5,auto);justify-content:space-between}
+nav .in{max-width:1120px;margin:0 auto;padding:0 8px;display:grid;grid-template-columns:repeat(6,auto);justify-content:space-between}
 nav button{padding-left:10px;padding-right:10px}
 nav button{border:0;background:none;font:600 14px/1.2 var(--font);color:var(--muted);padding:14px 4px 12px;cursor:pointer;border-bottom:3px solid transparent;min-height:48px}
 nav button.on{color:var(--ink);border-bottom-color:var(--lupine)}
 nav .s{display:none}
-@media (max-width:640px){nav .l{display:none}nav .s{display:inline}nav .in{grid-template-columns:repeat(5,1fr);padding:0 2px}nav button{font-size:13px;padding-left:2px;padding-right:2px}}
+@media (max-width:640px){nav .l{display:none}nav .s{display:inline}nav .in{grid-template-columns:repeat(6,1fr);padding:0 2px}nav button{font-size:12.5px;padding-left:1px;padding-right:1px}}
 main{max-width:1120px;margin:0 auto;padding:14px 16px 40px}
 
 /* filters */
@@ -133,6 +133,37 @@ select,input[type=number],input[type=date],input[type=text],input[type=password]
 .grid .c.none b{opacity:.5}
 .grid .c em{font-style:normal;font-size:10px;font-weight:500;color:var(--muted);line-height:1}
 
+/* patterns */
+.pat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;margin-bottom:12px}
+.pat h2{margin:0 0 4px;font-size:17px}
+.pat .take{margin:0 0 14px;font-size:14px;color:var(--ink)}
+.pat .take.dim{color:var(--muted)}
+.plegend{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:0 0 12px}
+.plegend i{display:inline-block;width:14px;height:10px;border-radius:3px;vertical-align:-1px;margin-right:5px}
+.sdown{background:var(--moss)}.ssame{background:var(--line)}
+.sup{background:var(--ember);background-image:repeating-linear-gradient(135deg,transparent 0 3px,rgba(255,255,255,.45) 3px 5px)}
+.brow{display:grid;grid-template-columns:96px 1fr auto;gap:4px 12px;align-items:center;padding:6px 0}
+.brow .bl{font-size:14px;font-weight:600}
+.brow .bv{font-size:13px;text-align:right;white-space:nowrap;font-weight:600}
+.brow .bs{grid-column:2/-1;font-size:12px;color:var(--muted)}
+.stack{display:flex;gap:2px;height:14px;border-radius:4px;overflow:hidden;background:var(--sunk)}
+.stack span{display:block;height:100%}
+.stack.nodata{background:repeating-linear-gradient(90deg,var(--sunk) 0 6px,transparent 6px 9px)}
+.wk{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;align-items:end}
+.wk .col{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
+.wk .bars{display:flex;gap:2px;align-items:flex-end;height:90px}
+.wk .bars span{width:12px;border-radius:4px 4px 0 0;min-height:2px}
+.wk .lab{font-size:12px;color:var(--muted)}
+.wk .col.top .lab{color:var(--ink);font-weight:700}
+.dayp{display:grid;gap:4px}
+.drw{display:grid;grid-template-columns:40px 1fr auto;gap:10px;align-items:center;font-size:13px}
+.drw .bar{height:12px;border-radius:0 4px 4px 0;background:var(--line)}
+.drw.min .bar{background:var(--lupine)}
+.drw .v{white-space:nowrap;text-align:right;min-width:118px}
+.drw.min .v,.drw.min .d{font-weight:700;color:var(--lupine)}
+.twocol{display:grid;gap:18px}
+@media (min-width:900px){.twocol{grid-template-columns:1fr 1fr}.brow{grid-template-columns:110px 1fr 150px}.brow .bs{grid-column:2/3}}
+.pat h3{font-size:14px;margin:0 0 8px}
 /* delays */
 .air{display:grid;gap:8px;margin-bottom:22px}
 .arow{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:12px 16px;display:grid;grid-template-columns:1fr auto;gap:6px 14px;align-items:center}
@@ -189,6 +220,7 @@ h2{font-size:17px;margin:22px 0 10px;font-weight:700}
   <button data-v="watch"><span class="l">Watches</span><span class="s">Watches</span></button>
   <button data-v="cal"><span class="l">Price calendar</span><span class="s">Calendar</span></button>
   <button data-v="changes"><span class="l">Changes</span><span class="s">Changes</span></button>
+  <button data-v="pat"><span class="l">Patterns</span><span class="s">Patterns</span></button>
   <button data-v="rel"><span class="l">Cancellations &amp; delays</span><span class="s">Delays</span></button>
 </div></nav>
 <main>
@@ -209,7 +241,7 @@ const gf=(o,d,date,direct)=>'https://www.google.com/travel/flights?hl=en&curr=DK
 const gfRT=(o,d1,d2,direct)=>'https://www.google.com/travel/flights?hl=en&curr=DKK&q='+encodeURIComponent(`${direct?'nonstop ':''}flights from ${o} to KEF on ${d1} returning ${d2}`);
 const EXT='<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2h6v6M10 2 3 9" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
 const lnk=(href,label,cls='')=>`<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener">${label}${EXT}</a>`;
-let L=null,CH=[],BOARD=[],WATCH=[],BAGS=null,view='trips';
+let L=null,CH=[],BOARD=[],WATCH=[],BAGS=null,PAT=null,view='trips';
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}};const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
 const st={bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),minM:1,maxM:6,stops:'direct',from:'',to:'',maxp:'',
   route:'ALL-KEF',kind:'direct',chDir:'both',chWhat:'drops',limit:40,open:matchMedia('(min-width:900px)').matches};
@@ -257,6 +289,8 @@ function drawFilters(){
     const opt=(v,l)=>`<option value="${v}" ${v===st.route?'selected':''}>${l}</option>`;
     h+=`<div class="bar"><select id="route" aria-label="Route" style="flex:1;max-width:360px">${opt('ALL-KEF','All airports → Keflavík')}${opt('KEF-ALL','Keflavík → all airports')}${routes.map(r=>opt(r,`${NAME[r.split('-')[0]]} → ${NAME[r.split('-')[1]]}`)).join('')}</select>`+
       (kinds.includes('direct')?`<label class="sw"><input type="checkbox" id="calDirect" ${st.kind==='direct'?'checked':''}>Direct only</label>`:`<span class="sub">No direct flights on this route</span>`)+`</div>`;
+  } else if(view==='pat'){
+    h+=`<div class="bar">${directSw()}</div>`;
   } else if(view==='changes'){
     h+=`<div class="bar">${seg('chWhat',[['drops','Price drops'],['all','All changes']],st.chWhat,'Show')}</div>`;
     h+=more(radios('chDir','Direction',[['both','Both'],['to','To Iceland'],['from','From Iceland']],st.chDir)+chips('out','Danish or German airport',APTS,st.out));
@@ -405,6 +439,49 @@ function renderChanges(){
   wireMore();
 }
 
+// ---------- patterns ----------
+const BUCKETS=['6+ months','3–6 months','2–3 months','1–2 months','2–4 weeks','1–2 weeks','0–7 days'];
+const WDS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],WDL={Mon:'Monday',Tue:'Tuesday',Wed:'Wednesday',Thu:'Thursday',Fri:'Friday',Sat:'Saturday',Sun:'Sunday'};
+const pct=(a,n)=>n?Math.round(100*a/n):0;
+const skr=v=>v==null?'–':(v>0?'+':v<0?'−':'')+kr(Math.abs(v))+' kr';
+function renderPat(){
+  const P=PAT;
+  if(!P||!P.checks){$('view').innerHTML=empty('No patterns yet.','Patterns show up after a few price checks. Come back in a few days.');return;}
+  const k=st.stops==='direct'?'direct':'any',ENOUGH=30;
+  const lead=`<div class="lead"><span>Based on ${kr(P.checks)} check${P.checks===1?'':'s'} since ${P.since?fdd(P.since.slice(0,10)):'the start'}. Patterns get clearer after a few weeks.</span></div>`;
+  // 1. by days before departure
+  const mb=(P.moves_by_days_before?.[k]||[]),byB=new Map(mb.map(x=>[x.bucket,x]));
+  const order=[...BUCKETS.filter(b=>byB.has(b)),...mb.map(x=>x.bucket).filter(b=>!BUCKETS.includes(b))];
+  const ok=order.map(b=>byB.get(b)).filter(x=>x.n>=ENOUGH);
+  let take1='Not enough data yet for a clear pattern. It needs about 30 price changes per row.',dim1=true;
+  if(ok.length){const up=ok.reduce((a,b)=>b.up/b.n>a.up/a.n?b:a),dn=ok.reduce((a,b)=>b.down/b.n>a.down/a.n?b:a);dim1=false;
+    take1=`Prices rise most often ${up.bucket} before departure (${pct(up.up,up.n)}% of the time)`+(dn!==up?`, and drop most often ${dn.bucket} before (${pct(dn.down,dn.n)}%).`:'.');}
+  const rows=order.map(b=>{const x=byB.get(b),n=x.n||0;
+    if(!n)return `<div class="brow"><span class="bl">${esc(b)}</span><div class="stack nodata" aria-label="No data yet"></div><span class="bv sub">No data yet</span></div>`;
+    const t=`${b} before: ${x.down} drops, ${x.same} same, ${x.up} rises (${n} in all), average change ${skr(x.avg_kr)}`;
+    return `<div class="brow" title="${esc(t)}"><span class="bl">${esc(b)}</span>
+      <div class="stack" role="img" aria-label="${esc(t)}"><span class="sdown" style="flex:${x.down}"></span><span class="ssame" style="flex:${x.same}"></span><span class="sup" style="flex:${x.up}"></span></div>
+      <span class="bv ${x.avg_kr<0?'down':x.avg_kr>0?'up':''}">${skr(x.avg_kr)}${x.avg_pct!=null?` <span class="sub">(${x.avg_pct>0?'+':''}${String(Math.round(x.avg_pct*10)/10).replace('.',',')}%)</span>`:''}</span>
+      <span class="bs">▼ ${pct(x.down,n)}% &ensp;▲ ${pct(x.up,n)}% &ensp;${n} change${n===1?'':'s'}${n<ENOUGH?', too few to trust':''}</span></div>`}).join('');
+  const sec1=`<section class="pat"><h2>How prices move as departure gets closer</h2><p class="take${dim1?' dim':''}">${take1}</p>
+    <div class="plegend"><span><i class="sdown"></i>Dropped</span><span><i class="ssame"></i>Same</span><span><i class="sup"></i>Rose</span><span>Average change per check, right</span></div>${rows||'<p class="sub">No data yet.</p>'}</section>`;
+  // 2. weekday changes were seen
+  const cd=(P.moves_by_check_day?.[k]||[]),cdm=new Map(cd.map(x=>[x.wd,x])),mx=Math.max(1,...cd.map(x=>Math.max(x.down||0,x.up||0))),tot=cd.reduce((a,x)=>a+(x.n||0),0);
+  const bestDrop=tot>=ENOUGH&&cd.length?cd.reduce((a,b)=>(b.down||0)>(a.down||0)?b:a):null;
+  const sec2=`<section class="pat"><h2>Which weekday prices change</h2><p class="take${bestDrop?'':' dim'}">${bestDrop&&bestDrop.down?`Most price drops were seen on ${WDL[bestDrop.wd]||bestDrop.wd}s.`:'Not enough data yet for a clear pattern.'}</p>
+    <div class="plegend"><span><i class="sdown"></i>Drops</span><span><i class="sup"></i>Rises</span></div>
+    <div class="wk">${WDS.map(w=>{const x=cdm.get(w)||{n:0,down:0,up:0};return `<div class="col${bestDrop&&bestDrop.wd===w&&x.down?' top':''}" title="${WDL[w]}: ${x.down} drops, ${x.up} rises"><div class="bars"><span class="sdown" style="height:${Math.round(88*x.down/mx)}px"></span><span class="sup" style="height:${Math.round(88*x.up/mx)}px"></span></div><span class="lab">${w}</span><span class="sub" style="font-size:11px">▼${x.down} ▲${x.up}</span></div>`}).join('')}</div></section>`;
+  // 3. cheapest weekday to fly
+  const dayBlock=(arr,title)=>{arr=(arr||[]).filter(x=>x.avg);if(!arr.length)return `<div><h3>${title}</h3><p class="sub">No data yet.</p></div>`;
+    const m=new Map(arr.map(x=>[x.wd,x])),lo=Math.min(...arr.map(x=>x.avg)),hi=Math.max(...arr.map(x=>x.avg)),best=arr.find(x=>x.avg===lo);
+    return `<div><h3>${title}: <span style="color:var(--lupine)">${WDL[best.wd]||best.wd}</span></h3><div class="dayp">${WDS.map(w=>{const x=m.get(w);if(!x)return `<div class="drw"><span class="d">${w}</span><span></span><span class="v sub">–</span></div>`;
+      return `<div class="drw${x.avg===lo?' min':''}" title="${WDL[w]}: average ${KR(x.avg)} over ${x.n} days"><span class="d">${w}</span><span class="bar" style="width:${(100*x.avg/hi).toFixed(1)}%"></span><span class="v">${KR(x.avg)}${x.avg===lo?' <span class="sub">cheapest</span>':` <span class="sub">${skr(x.avg-lo)}</span>`}</span></div>`}).join('')}</div></div>`;};
+  const tw=P.by_travel_weekday||{};
+  const sec3=`<section class="pat"><h2>Cheapest weekday to fly</h2><p class="take dim">Average cheapest ${k==='direct'?'direct ':''}one-way price by the weekday you travel, from today's prices.</p>
+    <div class="twocol">${dayBlock(tw['to_'+k],'To Iceland')}${dayBlock(tw['from_'+k],'From Iceland')}</div></section>`;
+  $('view').innerHTML=lead+sec1+sec2+sec3;
+}
+
 // ---------- reliability ----------
 function renderRel(){
   const delay=b=>{if(!b.est||!b.sched)return 0;const t=s=>+s.slice(0,2)*60+ +s.slice(3);let d=t(b.est)-t(b.sched);if(d<-600)d+=1440;return d;};
@@ -507,12 +584,12 @@ function renderWatches(){
   });
 }
 
-function render(){({trips:renderTrips,watch:renderWatches,cal:renderCal,changes:renderChanges,rel:renderRel})[view]();}
+function render(){({trips:renderTrips,watch:renderWatches,cal:renderCal,changes:renderChanges,pat:renderPat,rel:renderRel})[view]();}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));view=b.dataset.v;st.limit=40;drawFilters();render();});
 (async()=>{
   try{
     const get=f=>fetch('data/'+f,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(f+' '+r.status);return r.json()});
-    [L,CH,BOARD,WATCH,BAGS]=await Promise.all([get('latest.json'),get('changes.json').catch(()=>[]),get('board.json').catch(()=>[]),get('watches.json').catch(()=>[]),get('bags.json').catch(()=>null)]);
+    [L,CH,BOARD,WATCH,BAGS,PAT]=await Promise.all([get('latest.json'),get('changes.json').catch(()=>[]),get('board.json').catch(()=>[]),get('watches.json').catch(()=>[]),get('bags.json').catch(()=>null),get('patterns.json').catch(()=>null)]);
     if(!Array.isArray(WATCH))WATCH=[];
     const idx=await get('index.json').catch(()=>({runs:[]}));
     $('status').textContent=`Last check ${new Date(L.run_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}, ${idx.runs.length} check${idx.runs.length===1?'':'s'} stored, prices for 1 adult`;
