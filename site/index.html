@@ -453,16 +453,19 @@ function renderPat(){
   const mb=(P.moves_by_days_before?.[k]||[]),byB=new Map(mb.map(x=>[x.bucket,x]));
   const order=[...BUCKETS.filter(b=>byB.has(b)),...mb.map(x=>x.bucket).filter(b=>!BUCKETS.includes(b))];
   const ok=order.map(b=>byB.get(b)).filter(x=>x.n>=ENOUGH);
-  let take1='Not enough data yet for a clear pattern. It needs about 30 price changes per row.',dim1=true;
-  if(ok.length){const up=ok.reduce((a,b)=>b.up/b.n>a.up/a.n?b:a),dn=ok.reduce((a,b)=>b.down/b.n>a.down/a.n?b:a);dim1=false;
-    take1=`Prices rise most often ${up.bucket} before departure (${pct(up.up,up.n)}% of the time)`+(dn!==up?`, and drop most often ${dn.bucket} before (${pct(dn.down,dn.n)}%).`:'.');}
+  let take1='Not enough data yet for a clear pattern. It needs a few weeks of checks.',dim1=true;
+  if(ok.length){const up=ok.reduce((a,b)=>b.up/b.n>a.up/a.n?b:a),dn=ok.reduce((a,b)=>b.down/b.n>a.down/a.n?b:a);
+    const parts=[];if(up.up>=10)parts.push(`prices rise most often ${up.bucket} before departure (${pct(up.up,up.n)}% of the time)`);
+    if(dn.down>=10)parts.push(`${parts.length?'and they ':'prices '}drop most often ${dn.bucket} before (${pct(dn.down,dn.n)}%)`);
+    if(parts.length){dim1=false;take1=parts.join(', ').replace(/^p/,'P')+'.';}
+    else take1='Prices have hardly moved between the checks so far, so there is no pattern yet.';}
   const rows=order.map(b=>{const x=byB.get(b),n=x.n||0;
     if(!n)return `<div class="brow"><span class="bl">${esc(b)}</span><div class="stack nodata" aria-label="No data yet"></div><span class="bv sub">No data yet</span></div>`;
     const t=`${b} before: ${x.down} drops, ${x.same} same, ${x.up} rises (${n} in all), average change ${skr(x.avg_kr)}`;
     return `<div class="brow" title="${esc(t)}"><span class="bl">${esc(b)}</span>
       <div class="stack" role="img" aria-label="${esc(t)}"><span class="sdown" style="flex:${x.down}"></span><span class="ssame" style="flex:${x.same}"></span><span class="sup" style="flex:${x.up}"></span></div>
       <span class="bv ${x.avg_kr<0?'down':x.avg_kr>0?'up':''}">${skr(x.avg_kr)}${x.avg_pct!=null?` <span class="sub">(${x.avg_pct>0?'+':''}${String(Math.round(x.avg_pct*10)/10).replace('.',',')}%)</span>`:''}</span>
-      <span class="bs">▼ ${pct(x.down,n)}% &ensp;▲ ${pct(x.up,n)}% &ensp;${n} change${n===1?'':'s'}${n<ENOUGH?', too few to trust':''}</span></div>`}).join('');
+      <span class="bs">▼ ${pct(x.down,n)}% &ensp;▲ ${pct(x.up,n)}% &ensp;${n} comparison${n===1?'':'s'}${n<ENOUGH?', too few to trust':''}</span></div>`}).join('');
   const sec1=`<section class="pat"><h2>How prices move as departure gets closer</h2><p class="take${dim1?' dim':''}">${take1}</p>
     <div class="plegend"><span><i class="sdown"></i>Dropped</span><span><i class="ssame"></i>Same</span><span><i class="sup"></i>Rose</span><span>Average change per check, right</span></div>${rows||'<p class="sub">No data yet.</p>'}</section>`;
   // 2. weekday changes were seen
