@@ -1,0 +1,6 @@
+[Unit]
+Description=Iceland Flight Watch auto-deploy from GitHub
+
+[Service]
+Type=oneshot
+ExecStart=/opt/flight-watch/autodeploy.sh

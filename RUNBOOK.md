@@ -8,4 +8,4 @@ Public page: https://fly.strømsparer.dk (Hetzner server 89.167.101.11, Caddy, `
 - Secrets live in `/opt/flight-watch/.env` (TP_TOKEN, WATCH_PIN, UPLOAD_TOKEN), not in git.
 
 ## Deploy code changes
-Copy changed files to `/opt/flight-watch` (page: `site/index.html` → `/srv/flight-watch/index.html`) with the deploy key in `Downloads\sport-tv-deploy` on Martin's PC.
+Push to `main`. The server pulls the repo every 5 minutes (`flight-watch-deploy.timer` → `/opt/flight-watch/autodeploy.sh`, read-only GitHub deploy key `/root/.ssh/flight_watch_deploy`) and installs changed scripts and the page by itself. New systemd units or Caddy changes still need SSH (deploy key in `Downloads\sport-tv-deploy` on Martin's PC).
