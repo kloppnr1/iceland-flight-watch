@@ -9,14 +9,33 @@ FLI = os.environ.get('FLI', 'fli')
 final = sys.argv[1] if len(sys.argv) > 1 else 'cal'
 out = final + '.new'
 os.makedirs(out, exist_ok=True)
-for f in glob.glob(os.path.join(out, '*.txt')) + glob.glob(os.path.join(out, '*.json')):
-    os.remove(f)
+# Resume support: progress.json in the work folder remembers what is done, so a restarted session
+# continues where it stopped (within 20 hours) instead of starting over.
+prog_path = os.path.join(out, 'progress.json')
+prog = json.load(open(prog_path)) if os.path.exists(prog_path) else {}
+now = datetime.datetime.now(datetime.timezone.utc)
+fresh = not prog or (now - datetime.datetime.fromisoformat(prog['started'])).total_seconds() > 20 * 3600
+if fresh:
+    for f in glob.glob(os.path.join(out, '*.txt')) + glob.glob(os.path.join(out, '*.json')):
+        os.remove(f)
+    today = datetime.date.today()
+    prog = {'started': now.isoformat(), 'start': str(today + datetime.timedelta(days=1)),
+            'end': str(today + datetime.timedelta(days=330)), 'cal_done': [], 'day_done': []}
+else:
+    print('resuming run started', prog['started'], 'done:', prog['cal_done'], prog['day_done'], flush=True)
 
-today = datetime.date.today()
-start, end = today + datetime.timedelta(days=1), today + datetime.timedelta(days=330)
+
+def save_prog():
+    json.dump(prog, open(prog_path, 'w'))
+
+
+save_prog()
+start, end = datetime.date.fromisoformat(prog['start']), datetime.date.fromisoformat(prog['end'])
 routes = [(a, 'KEF') for a in ['CPH', 'BLL', 'AAL', 'HAM']] + [('KEF', a) for a in ['CPH', 'BLL', 'AAL', 'HAM']]
 for o, d in routes:
     for kind, stops in [('any', 'ANY'), ('direct', '0')]:
+        if f'{o}-{d}-{kind}' in prog['cal_done']:
+            continue
         prices = {}
         js = None
         for attempt in range(4):
@@ -38,6 +57,7 @@ for o, d in routes:
         time.sleep(5)
         if not prices:
             print(o, d, kind, 'no flights')
+            prog['cal_done'].append(f'{o}-{d}-{kind}'); save_prog()
             continue
         ks = sorted(prices)
         d0 = datetime.date.fromisoformat(ks[0])
@@ -46,6 +66,7 @@ for o, d in routes:
         with open(os.path.join(out, f'{o}-{d}-{kind}.txt'), 'w') as f:
             f.write(ks[0] + '\n' + ' '.join(map(str, vals)) + '\n')
         print(o, d, kind, ks[0], n, 'days', sum(1 for v in vals if v), 'priced')
+        prog['cal_done'].append(f'{o}-{d}-{kind}'); save_prog()
 
 # ---- Fill gaps day by day for the smaller airports ----
 # fli's calendar search skips many days on thin routes (Billund, Aalborg, Hamburg),
@@ -111,6 +132,8 @@ def read_cal(o, d, kind):
 
 
 for o, d in routes:
+    if f'{o}-{d}' in prog['day_done']:
+        continue
     t0 = time.time()
     with ThreadPoolExecutor(3) as ex:
         res = list(ex.map(day_search, [(o, d, day) for day in days]))
@@ -128,6 +151,7 @@ for o, d in routes:
         json.dump(det, f, separators=(',', ':'))
     print(o, d, 'day by day:', len(det), 'days with flights,', sum(1 for v in det.values() if 'direct' in v), 'direct,',
           failed, 'empty/failed,', int(time.time() - t0), 's', flush=True)
+    prog['day_done'].append(f'{o}-{d}'); save_prog()
 
 # Only replace the old calendars if this run got most routes (a Google rate limit can make a run fail)
 got = glob.glob(os.path.join(out, '*-any.txt'))
@@ -137,7 +161,8 @@ if len(got) >= 6:
         os.remove(f)
     for f in glob.glob(os.path.join(final, '*.json')):
         os.remove(f)
-    for f in glob.glob(os.path.join(out, '*.txt')) + glob.glob(os.path.join(out, '*.json')):
+    os.remove(prog_path)  # finished: next run starts fresh
+    for f in glob.glob(os.path.join(out, '*.txt')) + glob.glob(os.path.join(out, '*-details.json')):
         os.replace(f, os.path.join(final, os.path.basename(f)))
     print('calendars updated')
 else:

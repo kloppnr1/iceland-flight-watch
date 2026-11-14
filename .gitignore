@@ -1,2 +1,5 @@
 tp.json
 __pycache__/
+cal/
+cal.new/
+*.log
