@@ -177,3 +177,8 @@ print('SUMMARY', json.dumps(summ))
 import watches
 ws = watches.update(os.environ.get('WATCH_FILE', 'watches.json'), data, run_at, cal)
 print('watches', len(ws))
+
+# ---- price patterns ----
+import patterns
+pt = patterns.build(data, cal)
+print('patterns from', pt['checks'], 'checks')
