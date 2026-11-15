@@ -17,8 +17,8 @@ import watches
 APP = os.path.dirname(os.path.abspath(__file__))
 DATA = os.environ.get('DATA_DIR', '/srv/flight-watch/data')
 WATCH_FILE = os.path.join(APP, 'watches.json')
-PIN = os.environ.get('WATCH_PIN', '')
-UPLOAD_TOKEN = os.environ.get('UPLOAD_TOKEN', '')
+PIN = os.environ.get('WATCH_PIN', '').strip()  # .strip(): a .env saved on Windows ends lines with \r
+UPLOAD_TOKEN = os.environ.get('UPLOAD_TOKEN', '').strip()
 CAL = os.path.join(APP, 'cal')
 lock = threading.Lock()
 APTS = set(watches.APTS)
@@ -91,7 +91,7 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def ok_pin(self):
-        if PIN and self.headers.get('X-Pin', '') == PIN:
+        if PIN and self.headers.get('X-Pin', '').strip() == PIN:
             return True
         self.reply(403, {'error': 'Wrong PIN'})
         return False

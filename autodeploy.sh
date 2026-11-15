@@ -16,6 +16,11 @@ if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] && [ -f "$APP/.d
   exit 0
 fi
 git reset -q --hard origin/main
+# a new version of this script: run that one instead (it then deploys this commit itself)
+if ! cmp -s autodeploy.sh "$APP/autodeploy.sh"; then
+  install -m 755 autodeploy.sh "$APP/autodeploy.sh"
+  exec "$APP/autodeploy.sh"
+fi
 
 changed_api=0
 for f in api.py watches.py build.py tp.py patterns.py run.sh; do
@@ -28,7 +33,7 @@ done
 chmod 755 "$APP/run.sh"
 cmp -s site/index.html "$WEB/index.html" || install -m 644 site/index.html "$WEB/index.html"
 cmp -s site/data/bags.json "$WEB/data/bags.json" || install -m 644 site/data/bags.json "$WEB/data/bags.json"
-cmp -s autodeploy.sh "$APP/autodeploy.sh" || install -m 755 autodeploy.sh "$APP/autodeploy.sh"
+cmp -s site/airports.json "$WEB/airports.json" || install -m 644 site/airports.json "$WEB/airports.json"
 if [ $changed_api = 1 ]; then systemctl restart flight-watch-api; fi
 git rev-parse HEAD > "$APP/.deployed"
 echo "deployed $(git rev-parse --short HEAD)"

@@ -43,6 +43,15 @@ h1 .k{color:var(--lupine)}
 .dlist span{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:var(--r-sm);padding:4px 4px 4px 12px;font-size:14px}
 .dlist button{border:0;background:none;color:var(--muted);font:inherit;cursor:pointer;min-width:32px;min-height:32px;border-radius:var(--r-sm)}
 .dlist button:hover{color:var(--ember)}
+.apsearch{grid-column:1/-1}
+.aplist{list-style:none;margin:6px 0 0;padding:0;border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;max-width:640px}
+.aplist:empty{display:none}
+.aplist button{display:flex;gap:10px;align-items:baseline;width:100%;text-align:left;border:0;border-top:1px solid var(--line);background:var(--surface);color:inherit;font:inherit;font-size:15px;padding:10px 12px;cursor:pointer;min-height:44px}
+.aplist li:first-child button{border-top:0}
+.aplist button:hover,.aplist button:focus-visible{background:var(--lupine-soft)}
+.aplist b{min-width:3.2em;color:var(--lupine)}
+.aplist .sub{font-size:13px}
+.apchosen{margin-top:6px;font-size:14px}
 .srcnote{background:var(--lupine-soft);border-radius:var(--r-md);padding:10px 14px;font-size:14px;margin:0 0 14px;max-width:90ch}
 .status{color:var(--muted);font-size:13px}
 nav{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
@@ -83,7 +92,7 @@ details.more[open] summary::after{transform:rotate(225deg);margin-top:4px}
 .chips label:has(input:focus-visible){outline:2px solid var(--lupine);outline-offset:2px}
 .pair{display:flex;gap:6px;align-items:center}
 .pair>input{flex:1;min-width:0}
-select,input[type=number],input[type=date],input[type=text],input[type=password]{font:inherit;font-size:16px;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-md);padding:8px 10px;min-height:42px;width:100%}
+select,input[type=number],input[type=date],input[type=text],input[type=password],input[type=search]{font:inherit;font-size:16px;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-md);padding:8px 10px;min-height:42px;width:100%}
 .f select{max-width:340px}
 
 /* results */
@@ -644,18 +653,31 @@ function openDPanel(){
   const P=$('dpanel');P.hidden=false;
   P.innerHTML=`<div class="in"><div class="dlist" aria-label="Destinations">${DESTS.map(d=>`<span>${esc(d.name)} (${esc(d.code)})${DESTS.length>1?`<button type="button" data-rm="${esc(d.code)}" aria-label="Remove ${esc(d.name)}" title="Remove">✕</button>`:''}</span>`).join('')}</div>
   <div class="fgrid">
-   <div class="f"><span class="t">Airport code</span><input type="text" id="dCode" maxlength="3" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="AGP"></div>
-   <div class="f"><span class="t">Airport name</span><input type="text" id="dName" maxlength="40" placeholder="Málaga"></div>
+   <div class="f apsearch"><span class="t">Find an airport</span><input type="search" id="dFind" autocomplete="off" spellcheck="false" placeholder="City, airport or country, like Málaga" aria-describedby="dChosen" aria-controls="dList"><ul class="aplist" id="dList"></ul><div class="apchosen sub" id="dChosen" role="status"></div><input type="hidden" id="dCode"></div>
+   <div class="f"><span class="t">Name on the page</span><input type="text" id="dName" maxlength="40" placeholder="Málaga"></div>
    <div class="f"><span class="t">Place, as in "30 days in …"</span><input type="text" id="dPlace" maxlength="40" placeholder="Spain"></div>
    <div class="f"><span class="t">PIN</span><input type="password" inputmode="numeric" autocomplete="off" id="dPin" value="${esc(getPin())}" placeholder="Needed to save"></div>
   </div>
   <div class="act"><button class="btn" id="dAdd" type="button">Add airport</button><button class="btn ghost" id="dClose" type="button">Close</button><span class="msg" id="dMsg" role="status"></span></div></div>`;
   const msg=(t,ok)=>{const m=$('dMsg');m.textContent=t;m.className='msg '+(ok?'ok':'err')};
   $('dClose').onclick=()=>{P.hidden=true;P.innerHTML=''};
-  $('dCode').focus();
+  const find=$('dFind'),list=$('dList');find.focus();
+  const pick=a=>{$('dCode').value=a[0];$('dName').value=a[2]||a[1];$('dPlace').value=a[3];list.innerHTML='';find.value=`${a[2]||a[1]} (${a[0]})`;
+    $('dChosen').textContent=`${a[1]}, ${a[3]}. Code ${a[0]}.`;msg('',true);};
+  find.oninput=async()=>{
+    $('dCode').value='';$('dChosen').textContent='';
+    const q=find.value;if(q.trim().length<2){list.innerHTML='';return;}
+    const all=await loadAirports();if(find.value!==q)return;
+    if(!all){list.innerHTML='';$('dChosen').textContent='The airport list could not be loaded. Type the 3-letter code instead.';$('dCode').value=/^[a-z]{3}$/i.test(q.trim())?q.trim().toUpperCase():'';return;}
+    const res=searchAirports(all,q);
+    list.innerHTML=res.length?res.map((a,i)=>`<li><button type="button" data-i="${i}"><b>${esc(a[0])}</b><span>${esc(a[2]||a[1])}<br><span class="sub">${esc(a[1])}, ${esc(a[3])}</span></span></button></li>`).join('')
+      :'<li><button type="button" disabled>No airport with scheduled flights matches.</button></li>';
+    list.querySelectorAll('button[data-i]').forEach(b=>b.onclick=()=>pick(res[+b.dataset.i]));
+  };
+  find.onkeydown=e=>{if(e.key==='Enter'){const b=list.querySelector('button[data-i]');if(b){e.preventDefault();b.click();}}};
   $('dAdd').onclick=async()=>{
     const code=$('dCode').value.trim().toUpperCase();
-    if(!/^[A-Z]{3}$/.test(code))return msg('Use a 3-letter airport code, like AGP for Málaga.');
+    if(!/^[A-Z]{3}$/.test(code))return msg('Search for the airport and pick it from the list first.');
     const b=$('dAdd');b.disabled=true;msg('Adding…',true);
     try{DESTS=await destApi('POST','/api/dests',{code,name:$('dName').value.trim(),place:$('dPlace').value.trim()});
       P.hidden=true;P.innerHTML='';PENDING.add(code);setDest(code);waitForPrices(code);}
@@ -668,6 +690,21 @@ function openDPanel(){
     catch(e){msg(e.message)}
   });
 }
+// Airport list for the search: [code, airport name, city, country, 1 = large airport], loaded when first needed
+let AIRPORTS=null;
+const loadAirports=()=>AIRPORTS||(AIRPORTS=fetch('airports.json').then(r=>{if(!r.ok)throw 0;return r.json()}).catch(()=>{AIRPORTS=null;return null}));
+const fold=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+function searchAirports(all,q){
+  const w=fold(q).trim(),out=[];
+  for(const a of all){
+    const code=a[0].toLowerCase(),city=fold(a[2]),name=fold(a[1]),land=fold(a[3]);
+    let sc=code===w?100:city===w?80:city.startsWith(w)?60:name.split(/[\s\-\/]+/).some(x=>x.startsWith(w))?45:city.includes(w)||name.includes(w)?30:land.startsWith(w)?20:0;
+    if(!sc&&w.includes(' ')){const ws=w.split(/\s+/);if(ws.every(x=>`${code} ${city} ${name} ${land}`.includes(x)))sc=25;}
+    if(sc)out.push([sc+(a[4]?10:0),a]);
+  }
+  return out.sort((x,y)=>y[0]-x[0]).slice(0,8).map(x=>x[1]);
+}
+
 // After adding an airport the server fetches its first prices (Travelpayouts) right away: look every 10 s for up to 3 min
 async function waitForPrices(code){
   const t0=Date.now();
