@@ -270,7 +270,7 @@ const EXT='<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2h6v6M10 2 3 
 const lnk=(href,label,cls='')=>`<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener">${label}${EXT}</a>`;
 let L=null,CH=[],BOARD=[],WATCH=[],BAGS=null,PAT=null,view='trips';
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}};const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
-const st={dest:lsGet('ifw_dest','KEF'),bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),minM:1,maxM:6,stops:'direct',from:'',to:'',maxp:'',
+const st={dest:lsGet('ifw_dest','KEF'),bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),minM:1,maxM:6,unit:lsGet('ifw_stay_unit','m'),minD:30,maxD:182,stops:'direct',from:'',to:'',maxp:'',
   route:'ALL-'+lsGet('ifw_dest','KEF'),kind:'direct',chDir:'both',chWhat:'drops',limit:40,open:matchMedia('(min-width:900px)').matches};
 
 function series(route,kind,prev){const src=prev?L.prev_cal:L.cal;const c=src?.[route]?.[kind];const m=new Map();if(!c)return m;let d=c.start;c.p.forEach(v=>{if(v)m.set(d,v);d=add(d,1)});return m;}
@@ -285,10 +285,13 @@ function seg(id,opts,cur,aria){return `<div class="seg" role="radiogroup" aria-l
 function radios(id,label,opts,cur){return `<div class="f"><span class="t">${label}</span>${seg(id,opts,cur,label)}</div>`}
 const directSw=()=>`<label class="sw"><input type="checkbox" id="directSw" ${st.stops==='direct'?'checked':''}>Direct only</label>`;
 const aptSum=s=>s.size===APTS.length?'All airports':s.size?[...s].join(', '):'No airports';
+// stay as [shortest, longest] in days, from the months or days fields
+const stayDays=()=>st.unit==='d'?[Math.max(0,Math.round(+st.minD)||0),Math.round(+st.maxD)||9999]:[Math.round(+st.minM*30.4),Math.round(+st.maxM*30.4)||9999];
+const stayTxt=()=>st.unit==='d'?`${st.minD}–${st.maxD} days`:`${st.minM}–${st.maxM} months`;
 function filterSummary(){
   const dt=st.from||st.to?`${st.from?fd(st.from):'now'} to ${st.to?fd(st.to):'any'}`:'Any date';
   const mp=st.maxp?`max ${KR(+st.maxp)}`:'';
-  if(view==='trips'&&st.type==='rt')return [aptSum(st.out)===aptSum(st.home)?aptSum(st.out):`${aptSum(st.out)} out, ${aptSum(st.home)} home`,`${st.minM}–${st.maxM} months`,dt,mp].filter(Boolean).join(', ');
+  if(view==='trips'&&st.type==='rt')return [aptSum(st.out)===aptSum(st.home)?aptSum(st.out):`${aptSum(st.out)} out, ${aptSum(st.home)} home`,stayTxt(),dt,mp].filter(Boolean).join(', ');
   if(view==='trips')return [st.owDir==='to'?'To '+PLACE():'From '+PLACE(),aptSum(st.owApt),dt,mp].filter(Boolean).join(', ');
   return [st.chDir==='both'?'Both ways':st.chDir==='to'?'To '+PLACE():'From '+PLACE(),aptSum(st.out)].join(', ');
 }
@@ -299,7 +302,9 @@ function drawFilters(){
     h+=`<div class="bar">${seg('type',[['rt','Round trip'],['ow','One way']],st.type,'Trip type')}${directSw()}${bagSw()}</div>${bagNote()}`;
     if(st.type==='rt'){
       h+=more(chips('out','Fly out from',APTS,st.out)+chips('home','Fly home to',APTS,st.home)+
-        `<div class="f"><span class="t">Stay, in months</span><div class="pair"><input type="number" inputmode="decimal" min="0" max="11" step="0.5" id="minM" value="${st.minM}" aria-label="Shortest stay in months"><span>to</span><input type="number" inputmode="decimal" min="0" max="11" step="0.5" id="maxM" value="${st.maxM}" aria-label="Longest stay in months"></div></div>`+
+        `<div class="f"><span class="t">Stay</span>${seg('unit',[['m','Months'],['d','Days']],st.unit,'Stay in months or days')}${st.unit==='d'
+          ?`<div class="pair" style="margin-top:8px"><input type="number" inputmode="numeric" min="1" max="365" step="1" id="minD" value="${st.minD}" aria-label="Shortest stay in days"><span>to</span><input type="number" inputmode="numeric" min="1" max="365" step="1" id="maxD" value="${st.maxD}" aria-label="Longest stay in days"></div>`
+          :`<div class="pair" style="margin-top:8px"><input type="number" inputmode="decimal" min="0" max="11" step="0.5" id="minM" value="${st.minM}" aria-label="Shortest stay in months"><span>to</span><input type="number" inputmode="decimal" min="0" max="11" step="0.5" id="maxM" value="${st.maxM}" aria-label="Longest stay in months"></div>`}</div>`+
         `<div class="f"><span class="t">Leave between</span><div class="pair"><input type="date" id="from" value="${st.from}" aria-label="Earliest departure"><input type="date" id="to" value="${st.to}" aria-label="Latest departure"></div></div>`+
         `<div class="f"><span class="t">Max total price (kr)</span><input type="number" inputmode="numeric" id="maxp" value="${st.maxp}" placeholder="Any price"></div>`);
     }else{
@@ -328,8 +333,13 @@ function drawFilters(){
   const F=$('filters');F.innerHTML=h;
   const upd=()=>{const s=$('fsum');if(s)s.textContent=filterSummary();st.limit=40;render()};
   F.querySelectorAll('[data-set] input').forEach(i=>i.onchange=()=>{const s=st[i.closest('[data-set]').dataset.set];i.checked?s.add(i.value):s.delete(i.value);upd()});
-  F.querySelectorAll('[data-radio] input').forEach(i=>i.onchange=()=>{st[i.name]=i.value;if(i.name==='type'||i.name==='owDir'){st.limit=40;drawFilters();render()}else upd()});
-  ['minM','maxM','from','to','maxp'].forEach(id=>{const e=$(id);if(e)e.oninput=()=>{st[id]=e.value;upd()}});
+  F.querySelectorAll('[data-radio] input').forEach(i=>i.onchange=()=>{
+    if(i.name==='unit'){  // keep the same stay when switching between months and days
+      if(i.value==='d'){st.minD=Math.round(+st.minM*30.4)||1;st.maxD=Math.round(+st.maxM*30.4)||365;}
+      else{st.minM=Math.round(+st.minD/30.4*2)/2;st.maxM=Math.max(.5,Math.round(+st.maxD/30.4*2)/2);}
+      st.unit=i.value;lsSet('ifw_stay_unit',st.unit);drawFilters();render();return;}
+    st[i.name]=i.value;if(i.name==='type'||i.name==='owDir'){st.limit=40;drawFilters();render()}else upd()});
+  ['minM','maxM','minD','maxD','from','to','maxp'].forEach(id=>{const e=$(id);if(e)e.oninput=()=>{st[id]=e.value;upd()}});
   const ds=$('directSw');if(ds)ds.onchange=()=>{st.stops=ds.checked?'direct':'any';upd()};
   const bs=$('bagSw');if(bs)bs.onchange=()=>{st.bag=bs.checked;lsSet('ifw_bag',st.bag?'1':'0');drawFilters();render()};
   const cd=$('calDirect');if(cd)cd.onchange=()=>{st.kind=cd.checked?'direct':'any';render()};
@@ -362,7 +372,7 @@ const inclBag=()=>st.bag?'<span class="target">incl. bag (est.)</span>':'';
 
 // ---------- round trips ----------
 function trips(){
-  const direct=st.stops==='direct',kind=direct?'direct':'any',minD=Math.round(+st.minM*30.4),maxD=Math.round(+st.maxM*30.4)||9999,today=iso(new Date());
+  const direct=st.stops==='direct',kind=direct?'direct':'any',[minD,maxD]=stayDays(),today=iso(new Date());
   const rows=[];
   const K=DST();
   for(const o of st.out){const A=series(`${o}-${K}`,kind);if(!A.size)continue;const Ad=direct?A:series(`${o}-${K}`,'direct'),Ap=series(`${o}-${K}`,kind,true);
