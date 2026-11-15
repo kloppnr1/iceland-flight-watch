@@ -624,7 +624,7 @@ const tpOnly=()=>{const rs=destRoutes();return rs.length>0&&rs.every(r=>L.src?.[
 const srcName=()=>tpOnly()?'Travelpayouts (first prices)':'Google Flights';
 function srcNote(){
   const rs=destRoutes(),tp=rs.filter(r=>L.src?.[r]==='tp');if(!tp.length)return '';
-  return `<p class="srcnote">${tp.length===rs.length?'These are first prices':'Some routes show first prices'} for ${esc(nm(DST()))}, from Travelpayouts. They can miss days and cheaper fares. Full Google Flights prices come with the next price check, twice a day.</p>`;
+  return `<p class="srcnote">${tp.length===rs.length?'These are first prices':'Some routes show first prices'} for ${esc(nm(DST()))}, from Travelpayouts. They can miss days and cheaper fares. Google Flights prices replace them when they arrive, usually within 15 minutes of adding an airport.</p>`;
 }
 function noData(){
   if(destRoutes().length)return '';

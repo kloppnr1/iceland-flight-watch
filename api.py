@@ -38,6 +38,27 @@ def save_dests(ds):
     json.dump(ds, open(os.path.join(DATA, 'dests.json'), 'w'), ensure_ascii=False)
 
 
+GF_FIRE_URL = os.environ.get('GF_FIRE_URL', '').strip()
+GF_FIRE_TOKEN = os.environ.get('GF_FIRE_TOKEN', '').strip()
+
+
+def fire_google_task():
+    """Start the cloud task that fetches Google prices for new destinations (its API trigger), if set up in .env."""
+    if not GF_FIRE_URL or not GF_FIRE_TOKEN:
+        return
+
+    def go():
+        import urllib.request
+        req = urllib.request.Request(GF_FIRE_URL, data=b'{}', method='POST', headers={
+            'Authorization': 'Bearer ' + GF_FIRE_TOKEN, 'anthropic-version': '2023-06-01',
+            'anthropic-beta': 'experimental-cc-routine-2026-04-01', 'Content-Type': 'application/json'})
+        try:
+            print('google task started:', urllib.request.urlopen(req, timeout=30).read().decode()[:200], flush=True)
+        except Exception as e:
+            print('google task could not be started:', e, flush=True)
+    threading.Thread(target=go, daemon=True).start()
+
+
 def rebuild(*codes):
     # run.sh waits for a running price check (flock), fetches Travelpayouts for the given codes and rebuilds
     subprocess.Popen([os.path.join(APP, 'run.sh'), *codes], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -153,6 +174,7 @@ class H(BaseHTTPRequestHandler):
             ds.append(d)
             save_dests(ds)
         rebuild(code)
+        fire_google_task()
         self.reply(200, ds)
 
     def do_DELETE(self):
@@ -215,7 +237,7 @@ class H(BaseHTTPRequestHandler):
         self.reply(200, {'saved': len(ok)})
 
     def log_message(self, *a):
-        pass
+        pass  # no access log; fire_google_task prints to the journal
 
 
 if __name__ == '__main__':
