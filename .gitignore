@@ -3,3 +3,5 @@ __pycache__/
 cal/
 cal.new/
 *.log
+tp/
+dests.json

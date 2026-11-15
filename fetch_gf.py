@@ -2,8 +2,12 @@
 
 Writes cal/<FROM>-<TO>-<any|direct>.txt for each route: line 1 = start date,
 then one number per day = cheapest one-way price in DKK / 10 (0 = no flight).
+
+Routes: the home airports to and from each destination on the page's list (data/dests.json, or DESTS=KEF,AGP).
+Routes the server has no Google prices for yet (a destination that was just added) go first, and with
+UPLOAD_TOKEN set their calendars are uploaded as soon as they are done, before the slow day-by-day pass.
 """
-import json, os, sys, glob, datetime, subprocess, time
+import json, os, sys, glob, datetime, subprocess, time, urllib.request
 
 FLI = os.environ.get('FLI', 'fli')
 final = sys.argv[1] if len(sys.argv) > 1 else 'cal'
@@ -31,8 +35,58 @@ def save_prog():
 
 save_prog()
 start, end = datetime.date.fromisoformat(prog['start']), datetime.date.fromisoformat(prog['end'])
-routes = [(a, 'KEF') for a in ['CPH', 'BLL', 'AAL', 'HAM']] + [('KEF', a) for a in ['CPH', 'BLL', 'AAL', 'HAM']]
-for o, d in routes:
+SITE = 'https://fly.xn--strmsparer-2cb.dk'
+HOME = ['CPH', 'BLL', 'AAL', 'HAM']
+
+
+def site_json(path):
+    try:
+        return json.load(urllib.request.urlopen(urllib.request.Request(SITE + path, headers={'User-Agent': 'flight-watch-fetch'}), timeout=60))
+    except Exception as e:
+        print('could not read', path, e, flush=True)
+        return None
+
+
+if os.environ.get('DESTS'):
+    DESTS = [x.strip().upper() for x in os.environ['DESTS'].split(',') if x.strip()]
+else:
+    DESTS = [d['code'] for d in (site_json('/data/dests.json') or [])] or ['KEF']
+routes = [(a, D) for D in DESTS for a in HOME] + [(D, a) for D in DESTS for a in HOME]
+# routes the server has no Google calendar for yet: first in line
+latest = site_json('/data/latest.json') or {}
+have = {r for r in latest.get('cal', {}) if latest.get('src', {}).get(r) != 'tp'}
+if latest:
+    new = [r for r in routes if f'{r[0]}-{r[1]}' not in have]
+    routes = new + [r for r in routes if r not in new]
+else:
+    new = []
+print('destinations', DESTS, '- new routes first:', [f'{o}-{d}' for o, d in new], flush=True)
+
+
+def quick_upload():
+    """Send the calendars of the new routes now (merge: the server keeps all other files)."""
+    if not new or not os.environ.get('UPLOAD_TOKEN'):
+        return
+    files = {}
+    for o, d in new:
+        for kind in ['any', 'direct']:
+            p = os.path.join(out, f'{o}-{d}-{kind}.txt')
+            if os.path.exists(p):
+                files[os.path.basename(p)] = open(p).read()
+    if not files:
+        return
+    req = urllib.request.Request(SITE + '/api/cal', data=json.dumps({'files': files, 'merge': True}).encode(),
+                                 headers={'Content-Type': 'application/json', 'X-Upload-Token': os.environ['UPLOAD_TOKEN'],
+                                          'User-Agent': 'flight-watch-upload'}, method='POST')
+    try:
+        print('quick upload of new routes:', urllib.request.urlopen(req, timeout=120).read().decode(), flush=True)
+    except Exception as e:
+        print('quick upload failed', e, flush=True)
+
+
+for i_route, (o, d) in enumerate(routes):
+    if i_route == len(new) and not prog.get('quick_sent'):
+        quick_upload(); prog['quick_sent'] = True; save_prog()
     for kind, stops in [('any', 'ANY'), ('direct', '0')]:
         if f'{o}-{d}-{kind}' in prog['cal_done']:
             continue
@@ -67,6 +121,8 @@ for o, d in routes:
             f.write(ks[0] + '\n' + ' '.join(map(str, vals)) + '\n')
         print(o, d, kind, ks[0], n, 'days', sum(1 for v in vals if v), 'priced')
         prog['cal_done'].append(f'{o}-{d}-{kind}'); save_prog()
+if len(new) == len(routes) and not prog.get('quick_sent'):
+    quick_upload(); prog['quick_sent'] = True; save_prog()
 
 # ---- Fill gaps day by day for the smaller airports ----
 # fli's calendar search skips many days on thin routes (Billund, Aalborg, Hamburg),
@@ -155,7 +211,7 @@ for o, d in routes:
 
 # Only replace the old calendars if this run got most routes (a Google rate limit can make a run fail)
 got = glob.glob(os.path.join(out, '*-any.txt'))
-if len(got) >= 6:
+if len(got) >= min(6, len(routes)):
     os.makedirs(final, exist_ok=True)
     for f in glob.glob(os.path.join(final, '*.txt')):
         os.remove(f)

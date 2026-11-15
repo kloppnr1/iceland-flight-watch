@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<title>Iceland Flight Watch</title>
+<title>Flight Watch</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -32,14 +32,27 @@ a{color:var(--lupine)}
 header{max-width:1120px;margin:0 auto;padding:20px 16px 10px;display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
 h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.02em}
 h1 .k{color:var(--lupine)}
+.hl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dsel{display:flex;align-items:center;gap:6px;font-weight:600;font-size:15px}
+.dsel select{width:auto;min-width:0;max-width:72vw;font-weight:600;min-height:40px;padding:6px 10px}
+.dpanel{max-width:1120px;margin:0 auto 12px;padding:0 16px}
+.dpanel .in{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg)}
+.dpanel .fgrid{border-bottom:1px solid var(--line)}
+.dpanel .act{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:14px 16px}
+.dlist{display:flex;flex-wrap:wrap;gap:8px;padding:14px 16px}
+.dlist span{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:var(--r-sm);padding:4px 4px 4px 12px;font-size:14px}
+.dlist button{border:0;background:none;color:var(--muted);font:inherit;cursor:pointer;min-width:32px;min-height:32px;border-radius:var(--r-sm)}
+.dlist button:hover{color:var(--ember)}
+.srcnote{background:var(--lupine-soft);border-radius:var(--r-md);padding:10px 14px;font-size:14px;margin:0 0 14px;max-width:90ch}
 .status{color:var(--muted);font-size:13px}
 nav{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-nav .in{max-width:1120px;margin:0 auto;padding:0 8px;display:grid;grid-template-columns:repeat(6,auto);justify-content:space-between}
+nav .in{max-width:1120px;margin:0 auto;padding:0 8px;display:flex;justify-content:space-between}
+nav button[hidden]{display:none}
 nav button{padding-left:10px;padding-right:10px}
 nav button{border:0;background:none;font:600 14px/1.2 var(--font);color:var(--muted);padding:14px 4px 12px;cursor:pointer;border-bottom:3px solid transparent;min-height:48px}
 nav button.on{color:var(--ink);border-bottom-color:var(--lupine)}
 nav .s{display:none}
-@media (max-width:640px){nav .l{display:none}nav .s{display:inline}nav .in{grid-template-columns:repeat(6,1fr);padding:0 2px}nav button{font-size:12.5px;padding-left:1px;padding-right:1px}}
+@media (max-width:640px){nav .l{display:none}nav .s{display:inline}nav .in{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;padding:0 2px}nav button{font-size:12.5px;padding-left:1px;padding-right:1px}}
 main{max-width:1120px;margin:0 auto;padding:14px 16px 40px}
 
 /* filters */
@@ -214,21 +227,26 @@ h2{font-size:17px;margin:22px 0 10px;font-weight:700}
 </style>
 </head>
 <body>
-<header><h1>Iceland Flight Watch <span class="k">✈</span></h1><div class="status" id="status">Loading prices…</div></header>
+<header><div class="hl"><h1>Flight Watch <span class="k">✈</span></h1><label class="dsel">to <select id="dest" aria-label="Destination airport"><option>Keflavík</option></select></label></div><div class="status" id="status">Loading prices…</div></header>
+<div class="dpanel" id="dpanel" hidden></div>
 <nav aria-label="Views"><div class="in">
   <button data-v="trips" class="on"><span class="l">Cheapest flights</span><span class="s">Flights</span></button>
   <button data-v="watch"><span class="l">Watches</span><span class="s">Watches</span></button>
   <button data-v="cal"><span class="l">Price calendar</span><span class="s">Calendar</span></button>
   <button data-v="changes"><span class="l">Changes</span><span class="s">Changes</span></button>
   <button data-v="pat"><span class="l">Patterns</span><span class="s">Patterns</span></button>
-  <button data-v="rel"><span class="l">Cancellations &amp; delays</span><span class="s">Delays</span></button>
+  <button data-v="rel" id="relTab"><span class="l">Cancellations &amp; delays</span><span class="s">Delays</span></button>
 </div></nav>
 <main>
 <div id="filters"></div>
 <div id="view"></div>
 </main>
 <script>
-const APTS=['CPH','BLL','AAL','HAM'],NAME={CPH:'Copenhagen',BLL:'Billund',AAL:'Aalborg',HAM:'Hamburg',KEF:'Keflavík'};
+const APTS=['CPH','BLL','AAL','HAM'],NAME={CPH:'Copenhagen',BLL:'Billund',AAL:'Aalborg',HAM:'Hamburg'};
+let DESTS=[{code:'KEF',name:'Keflavík',place:'Iceland'}];
+const destOf=c=>DESTS.find(d=>d.code===c);
+const nm=c=>NAME[c]||destOf(c)?.name||c;
+const DST=()=>st.dest;const PLACE=()=>destOf(st.dest)?.place||st.dest;
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const kr=v=>v==null?'–':Math.round(v).toLocaleString('da-DK');
@@ -238,13 +256,13 @@ const add=(s,n)=>{const d=D(s);d.setUTCDate(d.getUTCDate()+n);return iso(d)};
 const days=(a,b)=>Math.round((D(b)-D(a))/864e5);
 const fd=s=>D(s).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'2-digit'});
 const gf=(o,d,date,direct)=>'https://www.google.com/travel/flights?hl=en&curr=DKK&q='+encodeURIComponent(`${direct?'nonstop ':''}one way flights from ${o} to ${d} on ${date}`);
-const gfRT=(o,d1,d2,direct)=>'https://www.google.com/travel/flights?hl=en&curr=DKK&q='+encodeURIComponent(`${direct?'nonstop ':''}flights from ${o} to KEF on ${d1} returning ${d2}`);
+const gfRT=(o,d1,d2,direct)=>'https://www.google.com/travel/flights?hl=en&curr=DKK&q='+encodeURIComponent(`${direct?'nonstop ':''}flights from ${o} to ${DST()} on ${d1} returning ${d2}`);
 const EXT='<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2h6v6M10 2 3 9" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
 const lnk=(href,label,cls='')=>`<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener">${label}${EXT}</a>`;
 let L=null,CH=[],BOARD=[],WATCH=[],BAGS=null,PAT=null,view='trips';
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}};const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
-const st={bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),minM:1,maxM:6,stops:'direct',from:'',to:'',maxp:'',
-  route:'ALL-KEF',kind:'direct',chDir:'both',chWhat:'drops',limit:40,open:matchMedia('(min-width:900px)').matches};
+const st={dest:lsGet('ifw_dest','KEF'),bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),minM:1,maxM:6,stops:'direct',from:'',to:'',maxp:'',
+  route:'ALL-'+lsGet('ifw_dest','KEF'),kind:'direct',chDir:'both',chWhat:'drops',limit:40,open:matchMedia('(min-width:900px)').matches};
 
 function series(route,kind,prev){const src=prev?L.prev_cal:L.cal;const c=src?.[route]?.[kind];const m=new Map();if(!c)return m;let d=c.start;c.p.forEach(v=>{if(v)m.set(d,v);d=add(d,1)});return m;}
 const hasPrev=()=>!!L.prev_cal;
@@ -262,8 +280,8 @@ function filterSummary(){
   const dt=st.from||st.to?`${st.from?fd(st.from):'now'} to ${st.to?fd(st.to):'any'}`:'Any date';
   const mp=st.maxp?`max ${KR(+st.maxp)}`:'';
   if(view==='trips'&&st.type==='rt')return [aptSum(st.out)===aptSum(st.home)?aptSum(st.out):`${aptSum(st.out)} out, ${aptSum(st.home)} home`,`${st.minM}–${st.maxM} months`,dt,mp].filter(Boolean).join(', ');
-  if(view==='trips')return [st.owDir==='to'?'To Iceland':'From Iceland',aptSum(st.owApt),dt,mp].filter(Boolean).join(', ');
-  return [st.chDir==='both'?'Both ways':st.chDir==='to'?'To Iceland':'From Iceland',aptSum(st.out)].join(', ');
+  if(view==='trips')return [st.owDir==='to'?'To '+PLACE():'From '+PLACE(),aptSum(st.owApt),dt,mp].filter(Boolean).join(', ');
+  return [st.chDir==='both'?'Both ways':st.chDir==='to'?'To '+PLACE():'From '+PLACE(),aptSum(st.out)].join(', ');
 }
 function more(inner){return `<details class="more" id="more" ${st.open?'open':''}><summary><b>Filters</b><span class="sum" id="fsum">${esc(filterSummary())}</span></summary><div class="fgrid">${inner}</div></details>`}
 function drawFilters(){
@@ -276,7 +294,7 @@ function drawFilters(){
         `<div class="f"><span class="t">Leave between</span><div class="pair"><input type="date" id="from" value="${st.from}" aria-label="Earliest departure"><input type="date" id="to" value="${st.to}" aria-label="Latest departure"></div></div>`+
         `<div class="f"><span class="t">Max total price (kr)</span><input type="number" inputmode="numeric" id="maxp" value="${st.maxp}" placeholder="Any price"></div>`);
     }else{
-      h+=more(radios('owDir','Direction',[['to','To Iceland'],['from','From Iceland']],st.owDir)+
+      h+=more(radios('owDir','Direction',[['to','To '+esc(PLACE())],['from','From '+esc(PLACE())]],st.owDir)+
         chips('owApt',st.owDir==='to'?'Fly from':'Fly to',APTS,st.owApt)+
         `<div class="f"><span class="t">Travel between</span><div class="pair"><input type="date" id="from" value="${st.from}" aria-label="Earliest travel date"><input type="date" id="to" value="${st.to}" aria-label="Latest travel date"></div></div>`+
         `<div class="f"><span class="t">Max price (kr)</span><input type="number" inputmode="numeric" id="maxp" value="${st.maxp}" placeholder="Any price"></div>`);
@@ -284,18 +302,18 @@ function drawFilters(){
   } else if(view==='watch'){
     h+=`<div class="bar">${bagSw()}</div>${bagNote()}`+watchForm();
   } else if(view==='cal'){
-    const routes=Object.keys(L.cal).sort((a,b)=>(a.startsWith('KEF')-b.startsWith('KEF'))||a.localeCompare(b));
+    const D_=DST(),routes=Object.keys(L.cal).filter(r=>r.split('-').includes(D_)).sort((a,b)=>(a.startsWith(D_)-b.startsWith(D_))||a.localeCompare(b));
     const kinds=st.route.includes('ALL')?['any','direct']:Object.keys(L.cal[st.route]||{});if(!kinds.includes(st.kind))st.kind='any';
     const opt=(v,l)=>`<option value="${v}" ${v===st.route?'selected':''}>${l}</option>`;
-    h+=`<div class="bar"><select id="route" aria-label="Route" style="flex:1;max-width:360px">${opt('ALL-KEF','All airports → Keflavík')}${opt('KEF-ALL','Keflavík → all airports')}${routes.map(r=>opt(r,`${NAME[r.split('-')[0]]} → ${NAME[r.split('-')[1]]}`)).join('')}</select>`+
+    h+=`<div class="bar"><select id="route" aria-label="Route" style="flex:1;max-width:360px">${opt('ALL-'+D_,'All airports → '+esc(nm(D_)))}${opt(D_+'-ALL',esc(nm(D_))+' → all airports')}${routes.map(r=>opt(r,`${esc(nm(r.split('-')[0]))} → ${esc(nm(r.split('-')[1]))}`)).join('')}</select>`+
       (kinds.includes('direct')?`<label class="sw"><input type="checkbox" id="calDirect" ${st.kind==='direct'?'checked':''}>Direct only</label>`:`<span class="sub">No direct flights on this route</span>`)+`</div>`;
   } else if(view==='pat'){
     h+=`<div class="bar">${directSw()}</div>`;
   } else if(view==='changes'){
     h+=`<div class="bar">${seg('chWhat',[['drops','Drops'],['rises','Rises'],['all','All']],st.chWhat,'Show')}</div>`;
-    h+=more(radios('chDir','Direction',[['both','Both'],['to','To Iceland'],['from','From Iceland']],st.chDir)+chips('out','Danish or German airport',APTS,st.out));
+    h+=more(radios('chDir','Direction',[['both','Both'],['to','To '+esc(PLACE())],['from','From '+esc(PLACE())]],st.chDir)+chips('out','Danish or German airport',APTS,st.out));
   } else {
-    h+=`<div class="bar">${seg('chDir',[['both','Both ways'],['to','To Iceland'],['from','From Iceland']],st.chDir,'Direction')}</div>`;
+    h+=`<div class="bar">${seg('chDir',[['both','Both ways'],['to','To '+esc(PLACE())],['from','From '+esc(PLACE())]],st.chDir,'Direction')}</div>`;
     h+=more(chips('out','Danish or German airport',APTS,st.out));
   }
   const F=$('filters');F.innerHTML=h;
@@ -337,12 +355,13 @@ const inclBag=()=>st.bag?'<span class="target">incl. bag (est.)</span>':'';
 function trips(){
   const direct=st.stops==='direct',kind=direct?'direct':'any',minD=Math.round(+st.minM*30.4),maxD=Math.round(+st.maxM*30.4)||9999,today=iso(new Date());
   const rows=[];
-  for(const o of st.out){const A=series(`${o}-KEF`,kind);if(!A.size)continue;const Ad=direct?A:series(`${o}-KEF`,'direct'),Ap=series(`${o}-KEF`,kind,true);
-    for(const h of st.home){const B=series(`KEF-${h}`,kind);if(!B.size)continue;const Bd=direct?B:series(`KEF-${h}`,'direct'),Bp=series(`KEF-${h}`,kind,true);
-      const bArr=[...B.entries()].sort().map(([d,p])=>{const x=det('KEF',h,d,direct);return [d,p,x,p+bagFee(x)]});
+  const K=DST();
+  for(const o of st.out){const A=series(`${o}-${K}`,kind);if(!A.size)continue;const Ad=direct?A:series(`${o}-${K}`,'direct'),Ap=series(`${o}-${K}`,kind,true);
+    for(const h of st.home){const B=series(`${K}-${h}`,kind);if(!B.size)continue;const Bd=direct?B:series(`${K}-${h}`,'direct'),Bp=series(`${K}-${h}`,kind,true);
+      const bArr=[...B.entries()].sort().map(([d,p])=>{const x=det(K,h,d,direct);return [d,p,x,p+bagFee(x)]});
       for(const [d1,p1] of A){if(d1<today||(st.from&&d1<st.from)||(st.to&&d1>st.to))continue;
         let best=null;for(const e of bArr){const n=days(d1,e[0]);if(n<minD)continue;if(n>maxD)break;if(!best||e[3]<best[3])best=e;}
-        if(!best)continue;const [d2,p2,x2,a2]=best,x1=det(o,'KEF',d1,direct),a1=p1+bagFee(x1);
+        if(!best)continue;const [d2,p2,x2,a2]=best,x1=det(o,K,d1,direct),a1=p1+bagFee(x1);
         rows.push({o,h,d1,d2,p1,p2,x1,x2,fare:p1+p2,total:a1+a2,stay:days(d1,d2),dir1:Ad.get(d1),dir2:Bd.get(d2),prev:(Ap.get(d1)&&Bp.get(d2))?Ap.get(d1)+Bp.get(d2):null});}
     }}
   const mx=+st.maxp||Infinity;return rows.filter(r=>r.total<=mx).sort((a,b)=>a.total-b.total);
@@ -351,27 +370,27 @@ const dirTag=(d,p)=>st.stops==='direct'?'':d?(d===p?'':`<span class="tag direct"
 function rtCard(r,best){
   const direct=st.stops==='direct',flag=best?'<div class="flag">Cheapest right now</div>':'';
   const ft=r.x1?.min!=null&&r.x2?.min!=null?`<div class="sub ft">${dur(r.x1.min+r.x2.min)} flying in total</div>`:'';
-  return `<article class="card${best?' best':''}"><div class="top"><div><div class="head">${r.stay} days in Iceland</div><div class="sub">${NAME[r.o]} out, ${NAME[r.h]} home</div>${ft}</div><div class="pr">${flag}<div class="price">${kr(r.total)}<small>kr</small></div>${inclBag()}${chg(r.fare,r.prev)}</div></div>
-  <div class="legs">${legHTML('Out',r.o,'KEF',r.d1,r.p1,r.x1,dirTag(r.dir1,r.p1))}${legHTML('Home','KEF',r.h,r.d2,r.p2,r.x2,dirTag(r.dir2,r.p2))}</div>
-  <div class="links">${lnk(gf(r.o,'KEF',r.d1,direct),'Out flight')}${lnk(gf('KEF',r.h,r.d2,direct),'Home flight')}${r.o===r.h?lnk(gfRT(r.o,r.d1,r.d2,direct),'Round trip','main'):''}</div></article>`;
+  return `<article class="card${best?' best':''}"><div class="top"><div><div class="head">${r.stay} days in ${esc(PLACE())}</div><div class="sub">${nm(r.o)} out, ${nm(r.h)} home</div>${ft}</div><div class="pr">${flag}<div class="price">${kr(r.total)}<small>kr</small></div>${inclBag()}${chg(r.fare,r.prev)}</div></div>
+  <div class="legs">${legHTML('Out',r.o,DST(),r.d1,r.p1,r.x1,dirTag(r.dir1,r.p1))}${legHTML('Home',DST(),r.h,r.d2,r.p2,r.x2,dirTag(r.dir2,r.p2))}</div>
+  <div class="links">${lnk(gf(r.o,DST(),r.d1,direct),'Out flight')}${lnk(gf(DST(),r.h,r.d2,direct),'Home flight')}${r.o===r.h?lnk(gfRT(r.o,r.d1,r.d2,direct),'Round trip','main'):''}</div></article>`;
 }
 function renderTrips(){
   if(st.type==='ow')return renderOneWay();
   const all=trips();
-  if(!all.length){$('view').innerHTML=empty('No round trips match these filters.',st.stops==='direct'?'Try turning off Direct only, or widen the stay or dates.':'Try more airports, a longer stay or a wider date range.');return;}
+  if(!all.length){$('view').innerHTML=noData()||empty('No round trips match these filters.',st.stops==='direct'?'Try turning off Direct only, or widen the stay or dates.':'Try more airports, a longer stay or a wider date range.');return;}
   // keep the cheapest trip per departure week + airport pair so the list is varied
   const seen=new Set(),rows=[];for(const r of all){const k=r.o+r.h+r.d1.slice(0,8)+Math.floor(+r.d1.slice(8)/8);if(seen.has(k))continue;seen.add(k);rows.push(r);if(rows.length>=150)break;}
   const shown=rows.slice(0,st.limit);
-  $('view').innerHTML=`<div class="lead"><span>${rows.length} trips, cheapest per week of departure</span><span>Total price for 1 adult${st.bag?', with bags':''}</span></div>
+  $('view').innerHTML=srcNote()+`<div class="lead"><span>${rows.length} trips, cheapest per week of departure</span><span>Total price for 1 adult${st.bag?', with bags':''}</span></div>
   <div class="list two">${shown.map((r,i)=>rtCard(r,i===0)).join('')}</div>${moreBtn(shown.length,rows.length)}
-  <p class="note">Each trip adds the cheapest one-way fare out to the cheapest one-way fare home, found on Google Flights. Open the links to see the exact flights.</p>`;
+  <p class="note">Each trip adds the cheapest one-way fare out to the cheapest one-way fare home, found on ${srcName()}. Open the links to see the exact flights.</p>`;
   wireMore();
 }
 
 // ---------- one way ----------
 function oneway(){
   const direct=st.stops==='direct',kind=direct?'direct':'any',today=iso(new Date()),rows=[];
-  for(const a of st.owApt){const o=st.owDir==='to'?a:'KEF',d=st.owDir==='to'?'KEF':a,route=`${o}-${d}`;
+  for(const a of st.owApt){const o=st.owDir==='to'?a:DST(),d=st.owDir==='to'?DST():a,route=`${o}-${d}`;
     const S=series(route,kind);if(!S.size)continue;const P=series(route,kind,true),Dd=direct?S:series(route,'direct');
     for(const [date,p] of S){if(date<today||(st.from&&date<st.from)||(st.to&&date>st.to))continue;const x=det(o,d,date,direct);rows.push({o,d,date,p,x,total:p+bagFee(x),prev:P.get(date),dirp:Dd.get(date)});}}
   const mx=+st.maxp||Infinity;return rows.filter(r=>r.total<=mx).sort((a,b)=>a.total-b.total||a.date.localeCompare(b.date));
@@ -379,35 +398,35 @@ function oneway(){
 function owCard(r,best){
   const direct=st.stops==='direct',flag=best?'<div class="flag">Cheapest right now</div>':'',fee=bagFee(r.x);
   const tag=direct&&!r.x?'<span class="tag direct">Direct</span>':dirTag(r.dirp,r.p);
-  return `<article class="card${best?' best':''}"><div class="top"><div><div class="head">${fd(r.date)}</div><div class="sub">${NAME[r.o]} → ${NAME[r.d]}</div></div><div class="pr">${flag}<div class="price">${kr(r.total)}<small>kr</small></div>${inclBag()}${chg(r.p,r.prev)}</div></div>
+  return `<article class="card${best?' best':''}"><div class="top"><div><div class="head">${fd(r.date)}</div><div class="sub">${nm(r.o)} → ${nm(r.d)}</div></div><div class="pr">${flag}<div class="price">${kr(r.total)}<small>kr</small></div>${inclBag()}${chg(r.p,r.prev)}</div></div>
   ${r.x?`<div class="legs"><div class="leg"><span class="d tm" style="grid-column:1/3">${r.o} → ${r.d}, ${times(r.x,r.date)}</span><span class="x" style="grid-row:1">${bagTag(fee)}</span><span class="fi" style="grid-column:1/-1">${[dur(r.x.min),stopsTxt(r.x.stops),esc(r.x.al)].filter(Boolean).join(', ')}</span></div></div>`
    :`<div class="legs"><div class="leg"><span class="w">${r.o} → ${r.d}</span><span class="d"></span><span class="x" style="grid-row:1">${bagTag(fee)} ${tag}</span></div></div>`}
   <div class="links">${lnk(gf(r.o,r.d,r.date,direct),'Open in Google Flights','main')}</div></article>`;
 }
 function renderOneWay(){
   const rows=oneway();
-  if(!rows.length){$('view').innerHTML=empty('No flights match these filters.',st.stops==='direct'?'Only Copenhagen and Billund have direct flights. Try turning off Direct only.':'Try more airports or a wider date range.');return;}
+  if(!rows.length){$('view').innerHTML=noData()||empty('No flights match these filters.',st.stops==='direct'?'Some airports have no direct flights. Try turning off Direct only.':'Try more airports or a wider date range.');return;}
   const shown=rows.slice(0,st.limit);
-  $('view').innerHTML=`<div class="lead"><span>${rows.length} flights ${st.owDir==='to'?'to':'from'} Iceland, cheapest first</span><span>One-way price for 1 adult${st.bag?', with bag':''}</span></div>
+  $('view').innerHTML=srcNote()+`<div class="lead"><span>${rows.length} flights ${st.owDir==='to'?'to':'from'} ${esc(PLACE())}, cheapest first</span><span>One-way price for 1 adult${st.bag?', with bag':''}</span></div>
   <div class="list two">${shown.map((r,i)=>owCard(r,i===0)).join('')}</div>${moreBtn(shown.length,rows.length)}
-  <p class="note">Prices are the cheapest one-way fare that day on Google Flights.</p>`;
+  <p class="note">Prices are the cheapest one-way fare that day on ${srcName()}.</p>`;
   wireMore();
 }
 
 // ---------- price calendar ----------
-// One route, or "All": the cheapest airport each day (to Iceland or from Iceland)
+// One route, or "All": the cheapest airport each day (to or from the destination)
 function calSeries(prev){
   const [o,d]=st.route.split('-');
   if(o!=='ALL'&&d!=='ALL'){const m=series(st.route,st.kind,prev),r=new Map();m.forEach((v,k)=>r.set(k,{v,o,d}));return r;}
   const r=new Map();
-  for(const a of APTS){const oo=o==='ALL'?a:'KEF',dd=d==='ALL'?a:'KEF';
+  for(const a of APTS){const oo=o==='ALL'?a:DST(),dd=d==='ALL'?a:DST();
     series(`${oo}-${dd}`,st.kind,prev).forEach((v,k)=>{const c=r.get(k);if(!c||v<c.v)r.set(k,{v,o:oo,d:dd})});}
   return r;
 }
 function renderCal(){
   const [o,d]=st.route.split('-'),all=o==='ALL'||d==='ALL',direct=st.kind==='direct';
   const cur=calSeries(false),prev=calSeries(true);
-  if(!cur.size){$('view').innerHTML=empty('No prices for this route yet.','Pick another route above.');return;}
+  if(!cur.size){$('view').innerHTML=noData()||empty('No prices for this route yet.','Pick another route above.');return;}
   const vals=[...cur.values()].map(x=>x.v).sort((a,b)=>a-b),q=p=>vals[Math.floor(p*(vals.length-1))],c1=q(.2),c2=q(.5),c3=q(.8),low=vals[0];
   const col=v=>v<=c1?'var(--cheap1)':v<=c2?'var(--cheap2)':v<=c3?'var(--dear1)':'var(--dear2)';
   const keys=[...cur.keys()].sort();const months=[];let m=keys[0].slice(0,7);while(m<=keys[keys.length-1].slice(0,7)){months.push(m);const dd=D(m+'-01');dd.setUTCMonth(dd.getUTCMonth()+1);m=iso(dd).slice(0,7);}
@@ -416,11 +435,11 @@ function renderCal(){
     for(let day=s0+1;day<=31;day++){const ds=`${mm}-${String(day).padStart(2,'0')}`;if(D(ds).getUTCMonth()!==first.getUTCMonth())break;const c=cur.get(ds),v=c?.v,pv=prev.get(ds)?.v;
       if(v&&(mlow==null||v<mlow))mlow=v;
       const arrow=v&&pv&&v!==pv?(v<pv?'<i class="down">▼</i>':'<i class="up">▲</i>'):'';
-      const x=c?det(c.o,c.d,ds,direct):null,info=x?', '+detTxt(x,ds):'',apt=c?(c.o==='KEF'?c.d:c.o):'';
+      const x=c?det(c.o,c.d,ds,direct):null,info=x?', '+detTxt(x,ds):'',apt=c?(c.o===DST()?c.d:c.o):'';
       cells+=v?`<a class="c${v===low?' low':''}" style="background:${col(v)}" href="${gf(c.o,c.d,ds,direct)}" target="_blank" rel="noopener" title="${fd(ds)}: ${KR(v)}, ${c.o} → ${c.d}${esc(info)}${pv&&pv!==v?' (was '+KR(pv)+')':''}" aria-label="${fd(ds)}, ${KR(v)}, ${c.o} to ${c.d}"><b>${day}</b><span>${kr(v)}</span>${all?`<em>${apt}</em>`:''}${arrow}</a>`:`<div class="c none"><b>${day}</b></div>`;}
     return `<section class="month"><h3>${D(mm+'-01').toLocaleDateString('en-GB',{month:'long',year:'numeric'})}${mlow?`<span>from ${KR(mlow)}</span>`:''}</h3><div class="grid">${cells}</div></section>`}).join('');
-  const what=o==='ALL'?'from any airport to Keflavík':d==='ALL'?'from Keflavík to any airport':`${NAME[o]} → ${NAME[d]}`;
-  $('view').innerHTML=`<div class="lead"><span>Cheapest ${direct?'direct ':''}one-way price each day, ${what}${all?' (the airport is shown under the price)':''}. Lowest: <b style="color:var(--lupine)">${KR(low)}</b></span></div>
+  const what=o==='ALL'?'from any airport to '+esc(nm(DST())):d==='ALL'?'from '+esc(nm(DST()))+' to any airport':`${esc(nm(o))} → ${esc(nm(d))}`;
+  $('view').innerHTML=srcNote()+`<div class="lead"><span>Cheapest ${direct?'direct ':''}one-way price each day, ${what}${all?' (the airport is shown under the price)':''}. Lowest: <b style="color:var(--lupine)">${KR(low)}</b></span></div>
   <div class="legend"><span><i style="background:var(--cheap1)"></i>Cheapest fifth</span><span><i style="background:var(--dear2)"></i>Priciest fifth</span><span><i style="outline:2px solid var(--lupine);outline-offset:-2px"></i>Lowest price</span><span><b class="down">▼</b> <b class="up">▲</b> Changed since last check</span><span>Tap a day to open Google Flights</span></div>
   <div class="months">${html}</div>`;
 }
@@ -428,12 +447,12 @@ function renderCal(){
 // ---------- changes ----------
 function renderChanges(){
   if(!CH.length){$('view').innerHTML=empty('No changes yet.','Changes show up from the second daily check.');return;}
-  const rows=CH.filter(c=>{const [o,d]=c.route.split('-');const apt=o==='KEF'?d:o;if(!st.out.has(apt))return false;if(st.chDir==='to'&&d!=='KEF')return false;if(st.chDir==='from'&&o!=='KEF')return false;if(st.chWhat==='drops'&&c.what!=='Price drop')return false;if(st.chWhat==='rises'&&c.what!=='Price rise')return false;return c.date>=iso(new Date());}).sort((a,b)=>{const da=(a.new??0)-(a.old??0),db=(b.new??0)-(b.old??0);return b.seen.localeCompare(a.seen)||(st.chWhat==='rises'?db-da:da-db);});
+  const K=DST(),rows=CH.filter(c=>{const [o,d]=c.route.split('-');if(o!==K&&d!==K)return false;const apt=o===K?d:o;if(!st.out.has(apt))return false;if(st.chDir==='to'&&d!==K)return false;if(st.chDir==='from'&&o!==K)return false;if(st.chWhat==='drops'&&c.what!=='Price drop')return false;if(st.chWhat==='rises'&&c.what!=='Price rise')return false;return c.date>=iso(new Date());}).sort((a,b)=>{const da=(a.new??0)-(a.old??0),db=(b.new??0)-(b.old??0);return b.seen.localeCompare(a.seen)||(st.chWhat==='rises'?db-da:da-db);});
   if(!rows.length){$('view').innerHTML=empty('No changes match these filters.',st.chWhat!=='all'?'Try All.':'Try more airports or both directions.');return;}
   const shown=rows.slice(0,st.limit);
   $('view').innerHTML=`<div class="lead"><span>${rows.length} ${st.chWhat==='rises'?'price rise':st.chWhat==='drops'?'price drop':'change'}${rows.length===1?"":"s"}, newest check first${st.chWhat!=='all'?`, biggest first. Average ${KR(Math.round(rows.reduce((t,c)=>t+Math.abs(c.new-c.old),0)/rows.length))} per flight day`:''}</span><span>Changes under 50 kr are left out</span></div><div class="list two">${shown.map(c=>{const [o,d]=c.route.split('-');const diff=c.old!=null&&c.new!=null?c.new-c.old:null;
     const cls=c.what==='Price drop'?'down':c.what==='Price rise'||c.what==='No longer offered'?'up':'new';
-    return `<article class="card"><div class="top"><div><div class="head">${fd(c.date)}</div><div class="sub">${NAME[o]} → ${NAME[d]} ${c.kind==='direct'?'<span class="tag direct">Direct</span>':''}</div></div><div class="pr"><div class="price">${c.new!=null?kr(c.new)+'<small>kr</small>':'<small>Gone</small>'}</div><span class="chg ${cls}">${diff!=null?(diff<0?'▼ ':'▲ ')+KR(Math.abs(diff)):esc(c.what)}</span></div></div>
+    return `<article class="card"><div class="top"><div><div class="head">${fd(c.date)}</div><div class="sub">${esc(nm(o))} → ${esc(nm(d))} ${c.kind==='direct'?'<span class="tag direct">Direct</span>':''}</div></div><div class="pr"><div class="price">${c.new!=null?kr(c.new)+'<small>kr</small>':'<small>Gone</small>'}</div><span class="chg ${cls}">${diff!=null?(diff<0?'▼ ':'▲ ')+KR(Math.abs(diff)):esc(c.what)}</span></div></div>
     <div class="sub" style="margin-top:6px">${esc(c.what)}${c.old!=null?`, was ${KR(c.old)}`:''}. Seen ${D(c.seen.slice(0,10)).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}.</div>
     <div class="links">${lnk(gf(o,d,c.date,c.kind==='direct'),'Open in Google Flights')}</div></article>`}).join('')}</div>${moreBtn(shown.length,rows.length)}`;
   wireMore();
@@ -445,7 +464,7 @@ const WDS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],WDL={Mon:'Monday',Tue:'Tue
 const pct=(a,n)=>n?Math.round(100*a/n):0;
 const skr=v=>v==null?'–':(v>0?'+':v<0?'−':'')+kr(Math.abs(v))+' kr';
 function renderPat(){
-  const P=PAT;
+  const P=PAT&&(PAT.by_dest?(PAT.by_dest[DST()]&&{checks:PAT.checks,since:PAT.since,...PAT.by_dest[DST()]}):DST()==='KEF'?PAT:null);
   if(!P||!P.checks){$('view').innerHTML=empty('No patterns yet.','Patterns show up after a few price checks. Come back in a few days.');return;}
   const k=st.stops==='direct'?'direct':'any',ENOUGH=30;
   const lead=`<div class="lead"><span>Based on ${kr(P.checks)} check${P.checks===1?'':'s'} since ${P.since?fdd(P.since.slice(0,10)):'the start'}. Patterns get clearer after a few weeks.</span></div>`;
@@ -481,7 +500,7 @@ function renderPat(){
       return `<div class="drw${x.avg===lo?' min':''}" title="${WDL[w]}: average ${KR(x.avg)} over ${x.n} days"><span class="d">${w}</span><span class="bar" style="width:${(100*x.avg/hi).toFixed(1)}%"></span><span class="v">${KR(x.avg)}${x.avg===lo?' <span class="sub">cheapest</span>':` <span class="sub">${skr(x.avg-lo)}</span>`}</span></div>`}).join('')}</div></div>`;};
   const tw=P.by_travel_weekday||{};
   const sec3=`<section class="pat"><h2>Cheapest weekday to fly</h2><p class="take dim">Average cheapest ${k==='direct'?'direct ':''}one-way price by the weekday you travel, from today's prices.</p>
-    <div class="twocol">${dayBlock(tw['to_'+k],'To Iceland')}${dayBlock(tw['from_'+k],'From Iceland')}</div></section>`;
+    <div class="twocol">${dayBlock(tw['to_'+k],'To '+esc(PLACE()))}${dayBlock(tw['from_'+k],'From '+esc(PLACE()))}</div></section>`;
   $('view').innerHTML=lead+sec1+sec2+sec3;
 }
 
@@ -508,7 +527,7 @@ const getPin=()=>{try{return localStorage.getItem('ifw_pin')||''}catch(e){return
 const setPin=p=>{try{localStorage.setItem('ifw_pin',p)}catch(e){}};
 const fdd=s=>D(s).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 function watchForm(){
-  return `<details class="wform" id="wform" ${WATCH.length?'':'open'}><summary style="list-style:none;cursor:pointer;padding:12px 16px;min-height:48px;display:flex;align-items:center;justify-content:space-between;gap:12px"><b style="white-space:nowrap">Add a watch</b><span class="sub wsub">Follow a trip until the price is good enough</span></summary>
+  return `<details class="wform" id="wform" ${WATCH.some(w=>(w.dest||'KEF')===DST())?'':'open'}><summary style="list-style:none;cursor:pointer;padding:12px 16px;min-height:48px;display:flex;align-items:center;justify-content:space-between;gap:12px"><b style="white-space:nowrap">Add a watch</b><span class="sub wsub">Follow a trip until the price is good enough</span></summary>
   <div class="fgrid">
    <div class="f"><span class="t">Name (optional)</span><input type="text" id="wName" value="${esc(W.name)}" placeholder="2 months early 2027"></div>
    <div class="f"><span class="t">Whole trip between</span><div class="pair"><input type="date" id="wFrom" value="${W.from}" aria-label="Earliest out date"><input type="date" id="wTo" value="${W.to}" aria-label="Latest home date"></div></div>
@@ -544,7 +563,7 @@ function wireWatchForm(){
     if(!W.out.size||!W.home.size)return wMsg('Pick at least one airport each way.');
     if(!/^\d{6}$/.test(($('wPin').value||'').trim()))return wMsg('The PIN must be 6 digits.');
     const btn=$('wSave');btn.disabled=true;wMsg('Saving…',true);
-    try{WATCH=await api('POST','/api/watches',{name:W.name.trim(),out:[...W.out],home:[...W.home],from:W.from,to:W.to,min_days:min,max_days:max,direct:W.direct,target:W.target?+W.target:null});
+    try{WATCH=await api('POST','/api/watches',{dest:DST(),name:W.name.trim(),out:[...W.out],home:[...W.home],from:W.from,to:W.to,min_days:min,max_days:max,direct:W.direct,target:W.target?+W.target:null});
       W.name='';$('wName').value='';wMsg('Watch added. Prices show after the next check.',true);render();}
     catch(e){wMsg(e.message)}finally{btn.disabled=false}
   };
@@ -562,14 +581,14 @@ function spark(h,target){
    <line x1="${X(last.at).toFixed(1)}" x2="${X(last.at).toFixed(1)}" y1="${Y(last.total).toFixed(1)}" y2="${Y(last.total).toFixed(1)}" stroke="var(--surface)" stroke-width="4" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`;
 }
 function watchCard(w){
-  const b=w.best,dir=!!w.direct,x1=b?det(b.o,'KEF',b.d1,dir):null,x2=b?det('KEF',b.h,b.d2,dir):null,tot=b?b.total+bagFee(x1)+bagFee(x2):null,pts=(w.history||[]).filter(x=>x.total!=null),prev=pts.length>1?pts[pts.length-2].total:null,low=pts.length?Math.min(...pts.map(x=>x.total)):null;
+  const K=w.dest||'KEF',b=w.best,dir=!!w.direct,x1=b?det(b.o,K,b.d1,dir):null,x2=b?det(K,b.h,b.d2,dir):null,tot=b?b.total+bagFee(x1)+bagFee(x2):null,pts=(w.history||[]).filter(x=>x.total!=null),prev=pts.length>1?pts[pts.length-2].total:null,low=pts.length?Math.min(...pts.map(x=>x.total)):null;
   const ch=b&&prev!=null&&b.total!==prev?(b.total<prev?`<span class="chg down">▼ ${KR(prev-b.total)}</span>`:`<span class="chg up">▲ ${KR(b.total-prev)}</span>`):'';
-  const head=`<div class="top"><div><div class="head">${esc(w.name||`${w.min_days}–${w.max_days} days in Iceland`)}</div>
+  const head=`<div class="top"><div><div class="head">${esc(w.name||`${w.min_days}–${w.max_days} days in ${PLACE()}`)}</div>
     <div class="sub">${fdd(w.from)} to ${fdd(w.to)}, stay ${w.min_days}–${w.max_days} days</div>
     <div class="sub" style="margin-top:4px">${dir?'<span class="tag direct">Direct only</span>':'<span class="tag">Any flights</span>'} <span class="tag">${esc((w.out||[]).join(', '))} out</span> <span class="tag">${esc((w.home||[]).join(', '))} home</span></div></div>
     <div class="pr">${b?`<div class="price"${w.good?' style="color:var(--moss)"':''}>${kr(tot)}<small>kr</small></div>${inclBag()}`:'<div class="sub">No price yet</div>'}${ch}${w.target?`<span class="target">Good enough at ${KR(w.target)}</span>`:''}</div></div>`;
-  const legs=b?`<div class="sub" style="margin-top:12px">Best trip now: ${b.days} days in Iceland${x1?.min!=null&&x2?.min!=null?`, ${dur(x1.min+x2.min)} flying in total`:''}</div><div class="legs" style="margin-top:6px">${legHTML('Out',b.o,'KEF',b.d1,b.p1,x1)}${legHTML('Home','KEF',b.h,b.d2,b.p2,x2)}</div>
-    <div class="links">${lnk(gf(b.o,'KEF',b.d1,dir),'Out flight')}${lnk(gf('KEF',b.h,b.d2,dir),'Home flight')}${b.o===b.h?lnk(gfRT(b.o,b.d1,b.d2,dir),'Round trip','main'):''}</div>`
+  const legs=b?`<div class="sub" style="margin-top:12px">Best trip now: ${b.days} days in ${esc(PLACE())}${x1?.min!=null&&x2?.min!=null?`, ${dur(x1.min+x2.min)} flying in total`:''}</div><div class="legs" style="margin-top:6px">${legHTML('Out',b.o,K,b.d1,b.p1,x1)}${legHTML('Home',K,b.h,b.d2,b.p2,x2)}</div>
+    <div class="links">${lnk(gf(b.o,K,b.d1,dir),'Out flight')}${lnk(gf(K,b.h,b.d2,dir),'Home flight')}${b.o===b.h?lnk(gfRT(b.o,b.d1,b.d2,dir),'Round trip','main'):''}</div>`
     :`<p class="sub" style="margin:12px 0 0">No trip fits this window right now. It is checked again with every price check.</p>`;
   const sp=spark(w.history||[],w.target);
   return `<article class="card${w.good?' good':''}">${w.good?`<div class="goodbar"><span>Good enough, book now</span><span>${KR(w.target-b.total)} under target</span></div>`:''}${head}${legs}
@@ -577,8 +596,9 @@ function watchCard(w){
    <div class="wfoot"><button class="btn ghost" data-del="${esc(w.id)}" type="button">Delete watch</button></div></article>`;
 }
 function renderWatches(){
-  if(!WATCH.length){$('view').innerHTML=empty('No watches yet.','Add one above to follow a trip window until the price is good enough.');return;}
-  const ws=WATCH.slice().sort((a,b)=>(b.good-a.good)||((a.best?.total??1e9)-(b.best?.total??1e9)));
+  const mine=WATCH.filter(w=>(w.dest||'KEF')===DST());
+  if(!mine.length){$('view').innerHTML=empty(`No watches for ${esc(nm(DST()))} yet.`,'Add one above to follow a trip window until the price is good enough.');return;}
+  const ws=mine.slice().sort((a,b)=>(b.good-a.good)||((a.best?.total??1e9)-(b.best?.total??1e9)));
   $('view').innerHTML=`<div class="lead"><span>${ws.length} watch${ws.length===1?'':'es'}, checked 4 times a day</span><span>Round trip price for 1 adult</span></div><div class="list two">${ws.map(watchCard).join('')}</div>`;
   $('view').querySelectorAll('[data-del]').forEach(btn=>btn.onclick=async()=>{
     const w=WATCH.find(x=>x.id===btn.dataset.del);if(!confirm(`Delete the watch "${w?.name||'this watch'}"?`))return;
@@ -588,13 +608,89 @@ function renderWatches(){
   });
 }
 
+// ---------- destinations ----------
+const PENDING=new Set();  // destinations just added, waiting for their first prices
+const destRoutes=()=>Object.keys(L?.cal||{}).filter(r=>r.split('-').includes(DST()));
+const tpOnly=()=>{const rs=destRoutes();return rs.length>0&&rs.every(r=>L.src?.[r]==='tp')};
+const srcName=()=>tpOnly()?'Travelpayouts (first prices)':'Google Flights';
+function srcNote(){
+  const rs=destRoutes(),tp=rs.filter(r=>L.src?.[r]==='tp');if(!tp.length)return '';
+  return `<p class="srcnote">${tp.length===rs.length?'These are first prices':'Some routes show first prices'} for ${esc(nm(DST()))}, from Travelpayouts. They can miss days and cheaper fares. Full Google Flights prices come with the next price check, twice a day.</p>`;
+}
+function noData(){
+  if(destRoutes().length)return '';
+  return PENDING.has(DST())?empty(`Getting the first prices for ${esc(nm(DST()))}…`,'This usually takes under a minute. The page updates by itself.')
+    :empty(`No prices for ${esc(nm(DST()))} yet.`,'Prices show after the next price check. Google Flights prices come twice a day.');
+}
+function drawDest(){
+  $('dest').innerHTML=DESTS.map(d=>`<option value="${esc(d.code)}" ${d.code===DST()?'selected':''}>${esc(d.name)}${d.name!==d.code?` (${esc(d.code)})`:''}</option>`).join('')+'<option value="+">Add or remove airports…</option>';
+  $('relTab').hidden=DST()!=='KEF';  // the delays board is read from Keflavík Airport's website
+}
+const navOn=()=>document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x.dataset.v===view));
+function setDest(c){
+  st.dest=c;lsSet('ifw_dest',c);st.route='ALL-'+c;st.limit=40;
+  if(view==='rel'&&c!=='KEF'){view='trips';navOn();}
+  drawDest();drawFilters();render();
+}
+$('dest').onchange=e=>{const v=e.target.value;if(v==='+'){e.target.value=DST();openDPanel();return;}setDest(v);};
+async function destApi(method,path,body){
+  const pin=($('dPin')?.value||getPin()).trim();if(!pin)throw new Error('Enter your PIN first.');
+  const r=await fetch(path,{method,headers:{'X-Pin':pin,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+  let j=null;try{j=await r.json()}catch(e){}
+  if(!r.ok)throw new Error(j&&j.error?j.error:`The server answered ${r.status}.`);
+  setPin(pin);return j;
+}
+function openDPanel(){
+  const P=$('dpanel');P.hidden=false;
+  P.innerHTML=`<div class="in"><div class="dlist" aria-label="Destinations">${DESTS.map(d=>`<span>${esc(d.name)} (${esc(d.code)})${DESTS.length>1?`<button type="button" data-rm="${esc(d.code)}" aria-label="Remove ${esc(d.name)}" title="Remove">✕</button>`:''}</span>`).join('')}</div>
+  <div class="fgrid">
+   <div class="f"><span class="t">Airport code</span><input type="text" id="dCode" maxlength="3" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="AGP"></div>
+   <div class="f"><span class="t">Airport name</span><input type="text" id="dName" maxlength="40" placeholder="Málaga"></div>
+   <div class="f"><span class="t">Place, as in "30 days in …"</span><input type="text" id="dPlace" maxlength="40" placeholder="Spain"></div>
+   <div class="f"><span class="t">PIN</span><input type="password" inputmode="numeric" autocomplete="off" id="dPin" value="${esc(getPin())}" placeholder="Needed to save"></div>
+  </div>
+  <div class="act"><button class="btn" id="dAdd" type="button">Add airport</button><button class="btn ghost" id="dClose" type="button">Close</button><span class="msg" id="dMsg" role="status"></span></div></div>`;
+  const msg=(t,ok)=>{const m=$('dMsg');m.textContent=t;m.className='msg '+(ok?'ok':'err')};
+  $('dClose').onclick=()=>{P.hidden=true;P.innerHTML=''};
+  $('dCode').focus();
+  $('dAdd').onclick=async()=>{
+    const code=$('dCode').value.trim().toUpperCase();
+    if(!/^[A-Z]{3}$/.test(code))return msg('Use a 3-letter airport code, like AGP for Málaga.');
+    const b=$('dAdd');b.disabled=true;msg('Adding…',true);
+    try{DESTS=await destApi('POST','/api/dests',{code,name:$('dName').value.trim(),place:$('dPlace').value.trim()});
+      P.hidden=true;P.innerHTML='';PENDING.add(code);setDest(code);waitForPrices(code);}
+    catch(e){msg(e.message);b.disabled=false}
+  };
+  P.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{
+    const d=destOf(b.dataset.rm);if(!confirm(`Remove ${d?.name||b.dataset.rm}? Its prices stop being checked.`))return;
+    try{DESTS=await destApi('DELETE','/api/dests/'+encodeURIComponent(b.dataset.rm));
+      if(!destOf(DST()))setDest(DESTS[0].code);else drawDest();openDPanel();}
+    catch(e){msg(e.message)}
+  });
+}
+// After adding an airport the server fetches its first prices (Travelpayouts) right away: look every 10 s for up to 3 min
+async function waitForPrices(code){
+  const t0=Date.now();
+  while(Date.now()-t0<180000){
+    await new Promise(r=>setTimeout(r,10000));
+    try{const j=await fetch('data/latest.json',{cache:'no-store'}).then(r=>r.json());
+      if(Object.keys(j.cal||{}).some(r=>r.split('-').includes(code))){L=j;PAT=await fetch('data/patterns.json',{cache:'no-store'}).then(r=>r.json()).catch(()=>PAT);break;}}catch(e){}
+  }
+  PENDING.delete(code);
+  if(DST()===code){drawFilters();render();}
+}
+
 function render(){({trips:renderTrips,watch:renderWatches,cal:renderCal,changes:renderChanges,pat:renderPat,rel:renderRel})[view]();}
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));view=b.dataset.v;st.limit=40;drawFilters();render();});
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{view=b.dataset.v;navOn();st.limit=40;drawFilters();render();});
 (async()=>{
   try{
     const get=f=>fetch('data/'+f,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(f+' '+r.status);return r.json()});
     [L,CH,BOARD,WATCH,BAGS,PAT]=await Promise.all([get('latest.json'),get('changes.json').catch(()=>[]),get('board.json').catch(()=>[]),get('watches.json').catch(()=>[]),get('bags.json').catch(()=>null),get('patterns.json').catch(()=>null)]);
     if(!Array.isArray(WATCH))WATCH=[];
+    const ds=await get('dests.json').catch(()=>null);
+    if(Array.isArray(ds)&&ds.length)DESTS=ds;else if(Array.isArray(L.dests)&&L.dests.length)DESTS=L.dests;
+    if(!destOf(st.dest)){st.dest=DESTS[0].code;st.route='ALL-'+st.dest;}
+    drawDest();
     const idx=await get('index.json').catch(()=>({runs:[]}));
     $('status').textContent=`Last check ${new Date(L.run_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}, ${idx.runs.length} check${idx.runs.length===1?'':'s'} stored, prices for 1 adult`;
     drawFilters();render();

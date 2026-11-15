@@ -4,7 +4,8 @@ Writes data/patterns.json:
 - moves_by_days_before: for each "days before departure" bucket, how often the price of a flight day went
   down / up / stayed between two checks, and the average change in kr and %.
 - moves_by_check_day: on which weekday (of the check) prices went down or up.
-- by_travel_weekday: average cheapest price by weekday of travel, now (to / from Iceland, any / direct).
+- by_travel_weekday: average cheapest price by weekday of travel, now (to / from the destination, any / direct).
+The top level covers every route; by_dest has the same three parts for each destination.
 Only checks with new Google prices count (the server also rebuilds between uploads with the same prices).
 """
 import json, os, glob, datetime
@@ -27,7 +28,7 @@ def bucket(n):
     return None
 
 
-def build(data_dir, latest_cal):
+def build(data_dir, latest_cal, codes=None):
     runs = []
     for f in sorted(glob.glob(os.path.join(data_dir, 'runs', '*.json'))):
         try:
@@ -42,12 +43,24 @@ def build(data_dir, latest_cal):
         if sig != last_sig:
             uniq.append(r)
             last_sig = sig
+    codes = codes or ['KEF']
+    res = {'checks': len(uniq), 'since': uniq[0]['run_at'] if uniq else None,
+           **stats(uniq, latest_cal, codes),
+           'by_dest': {D: stats(uniq, latest_cal, [D]) for D in codes}}
+    json.dump(res, open(os.path.join(data_dir, 'patterns.json'), 'w'), separators=(',', ':'))
+    return res
 
+
+def stats(uniq, latest_cal, codes):
+    """The three patterns for the routes to and from the destinations in codes."""
+    keep = lambda o, d: o in codes or d in codes
     moves = {k: defaultdict(lambda: {'n': 0, 'down': 0, 'up': 0, 'same': 0, 'sum': 0, 'pct': 0.0}) for k in ['any', 'direct']}
     by_check = {k: [{'down': 0, 'up': 0, 'n': 0} for _ in WD] for k in ['any', 'direct']}
     for prev, cur in zip(uniq, uniq[1:]):
         day = datetime.date.fromisoformat(cur['run_at'][:10])
         for route, kinds in cur.get('cal', {}).items():
+            if not keep(*route.split('-')):
+                continue
             for kind, c in kinds.items():
                 old_c = prev.get('cal', {}).get(route, {}).get(kind)
                 if not old_c or kind not in moves:
@@ -98,7 +111,7 @@ def build(data_dir, latest_cal):
             sums = [[0, 0] for _ in WD]
             for route, kinds in latest_cal.items():
                 o, d = route.split('-')
-                if (direction == 'to') != (d == 'KEF') or kind not in kinds:
+                if not keep(o, d) or (direction == 'to') != (d in codes) or kind not in kinds:
                     continue
                 for day, v in by_date(kinds[kind]).items():
                     w = datetime.date.fromisoformat(day).weekday()
@@ -106,9 +119,6 @@ def build(data_dir, latest_cal):
                     sums[w][1] += 1
             wk[f'{direction}_{kind}'] = [{'wd': WD[i], 'avg': round(s / n) if n else None, 'n': n} for i, (s, n) in enumerate(sums)]
 
-    res = {'checks': len(uniq), 'since': uniq[0]['run_at'] if uniq else None,
-           'moves_by_days_before': out_moves,
-           'moves_by_check_day': {k: [{'wd': WD[i], **v} for i, v in enumerate(vs)] for k, vs in by_check.items()},
-           'by_travel_weekday': wk}
-    json.dump(res, open(os.path.join(data_dir, 'patterns.json'), 'w'), separators=(',', ':'))
-    return res
+    return {'moves_by_days_before': out_moves,
+            'moves_by_check_day': {k: [{'wd': WD[i], **v} for i, v in enumerate(vs)] for k, vs in by_check.items()},
+            'by_travel_weekday': wk}
