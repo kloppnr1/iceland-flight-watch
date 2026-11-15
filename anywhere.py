@@ -1,7 +1,8 @@
 """Cheapest one-way prices to anywhere: Google Flights calendars (fli) from the home airports to a long list
 of destinations worldwide, for the next 6 months (3 windows of 61 days, the most one fli call returns).
 
-Results are saved to a local file after every lookup, so a stopped run continues where it stopped.
+Results are saved to a local file after every lookup, so a stopped run continues where it stopped
+(within 20 hours; after that a run starts over).
 With UPLOAD_TOKEN set they are also sent to the site (POST /api/anywhere) every 25 lookups, not only at the end.
 
 Usage: python3 anywhere.py [results.jsonl]           scan (and upload as it goes)
@@ -89,6 +90,13 @@ if UPLOAD_ONLY:
     upload({f'{o}-{d}' for (o, d, _), r in read_all().items()})
     sys.exit(0)
 
+# A results file older than 20 hours belongs to an earlier run: start over so prices are fresh.
+meta = OUT + '.started'
+if not os.path.exists(meta) or time.time() - float(open(meta).read() or 0) > 20 * 3600:
+    for f in (OUT, meta):
+        if os.path.exists(f):
+            os.remove(f)
+    open(meta, 'w').write(str(time.time()))
 done = {k for k, r in read_all().items() if r is not None}
 todo = [j for j in jobs if (j[0], j[1], str(j[2])) not in done]
 lock = threading.Lock()
