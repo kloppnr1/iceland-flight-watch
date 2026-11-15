@@ -48,13 +48,16 @@ def fire_google_task():
         return
 
     def go():
-        import urllib.request
+        import urllib.request, urllib.error
         # "new-only" tells the task to fetch only the destinations without Google prices (about 10 minutes)
         req = urllib.request.Request(GF_FIRE_URL, data=b'{"text": "new-only"}', method='POST', headers={
             'Authorization': 'Bearer ' + GF_FIRE_TOKEN, 'anthropic-version': '2023-06-01',
-            'anthropic-beta': 'experimental-cc-routine-2026-04-01', 'Content-Type': 'application/json'})
+            'anthropic-beta': 'experimental-cc-routine-2026-04-01', 'Content-Type': 'application/json',
+            'User-Agent': 'flight-watch/1.0'})
         try:
             print('google task started:', urllib.request.urlopen(req, timeout=30).read().decode()[:200], flush=True)
+        except urllib.error.HTTPError as e:
+            print('google task could not be started:', e, e.read().decode(errors='replace')[:300], flush=True)
         except Exception as e:
             print('google task could not be started:', e, flush=True)
     threading.Thread(target=go, daemon=True).start()
