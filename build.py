@@ -141,6 +141,7 @@ for f in glob.glob(os.path.join(cal_dir, '*-details.json')):
     det[f'{o}-{d}'] = {k: v for k, v in json.load(open(f)).items() if k >= str(today)}
 
 # ---- Travelpayouts calendars for routes with no Google calendar yet ----
+gdet = set(det)  # routes with flight times from Google's day-by-day search
 gcal = cal  # Google only: stored in runs/ for the patterns
 cal = dict(gcal)
 src = {}
@@ -172,7 +173,23 @@ for route in ROUTES:
     if not cal[route]:
         del cal[route], src[route]
 
-latest = {'run_at': run_at, 'cal': cal, 'det': det, 'src': src, 'dests': DESTS, 'tp_ow': tp['ow'], 'tp_rt': tp['rt'],
+# ---- status per route, for the page's airport list ----
+def mtime(path):
+    return datetime.datetime.fromtimestamp(os.path.getmtime(path), datetime.timezone.utc).isoformat(timespec='seconds') if os.path.exists(path) else None
+
+
+status = {}
+for route in ROUTES:
+    if route not in cal:
+        status[route] = {'src': None}
+        continue
+    days = {k: sum(1 for v in c['p'] if v) for k, c in cal[route].items()}
+    D = route.split('-')[1] if route.split('-')[0] in HOME else route.split('-')[0]
+    at = mtime(os.path.join(APP, 'tp', D + '.json')) if route in src else mtime(os.path.join(cal_dir, route + '-any.txt'))
+    status[route] = {'src': src.get(route, 'google'), 'any': days.get('any', 0), 'direct': days.get('direct', 0),
+                     'times': route in gdet, 'at': at}
+
+latest = {'run_at': run_at, 'cal': cal, 'det': det, 'src': src, 'status': status, 'dests': DESTS, 'tp_ow': tp['ow'], 'tp_rt': tp['rt'],
           'prev_run_at': prev.get('run_at'),
           # previous prices, only where they came from the same source (Google vs Travelpayouts)
           'prev_cal': {r: v for r, v in prev.get('cal', {}).items() if prev.get('src', {}).get(r) == src.get(r)}}

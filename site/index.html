@@ -43,6 +43,21 @@ h1 .k{color:var(--lupine)}
 .dlist span{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:var(--r-sm);padding:4px 4px 4px 12px;font-size:14px}
 .dlist button{border:0;background:none;color:var(--muted);font:inherit;cursor:pointer;min-width:32px;min-height:32px;border-radius:var(--r-sm)}
 .dlist button:hover{color:var(--ember)}
+.dstat{padding:6px 16px 10px;border-bottom:1px solid var(--line)}
+.dstat details{border-top:1px solid var(--line);padding:10px 0}
+.dstat details:first-child{border-top:0}
+.dstat summary{display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none;min-height:40px}
+.dstat summary::-webkit-details-marker{display:none}
+.dstat .dn{font-weight:600}
+.dstat .ds{flex:1;color:var(--muted);font-size:14px}
+.dstat .dot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--line)}
+.dstat .dot.ok{background:var(--moss)}.dstat .dot.part{background:var(--lupine)}.dstat .dot.wait{background:#d4a017}
+.dstat table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
+.dstat th{text-align:left;font-weight:500;color:var(--muted);padding:4px 8px 4px 0}
+.dstat td:first-child{white-space:nowrap}
+.dstat td{padding:5px 8px 5px 0;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+.dstat .rm{margin-left:auto;border:0;background:none;color:var(--muted);font:inherit;font-size:13px;cursor:pointer;min-height:32px;padding:0 6px}
+.dstat .rm:hover{color:var(--ember)}
 .apsearch{grid-column:1/-1}
 .aplist{list-style:none;margin:6px 0 0;padding:0;border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;max-width:640px}
 .aplist:empty{display:none}
@@ -642,7 +657,7 @@ function noData(){
     :empty(`No prices for ${esc(nm(DST()))} yet.`,'Prices show after the next price check. Google Flights prices come twice a day.');
 }
 function drawDest(){
-  $('dest').innerHTML=DESTS.map(d=>`<option value="${esc(d.code)}" ${d.code===DST()?'selected':''}>${esc(d.name)}${d.name!==d.code?` (${esc(d.code)})`:''}</option>`).join('')+'<option value="+">Add or remove airports…</option>';
+  $('dest').innerHTML=DESTS.map(d=>`<option value="${esc(d.code)}" ${d.code===DST()?'selected':''}>${esc(d.name)}${d.name!==d.code?` (${esc(d.code)})`:''}</option>`).join('')+'<option value="+">Airports and status…</option>';
   $('relTab').hidden=DST()!=='KEF';  // the delays board is read from Keflavík Airport's website
 }
 const navOn=()=>document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x.dataset.v===view));
@@ -661,7 +676,7 @@ async function destApi(method,path,body){
 }
 function openDPanel(){
   const P=$('dpanel');P.hidden=false;
-  P.innerHTML=`<div class="in"><div class="dlist" aria-label="Destinations">${DESTS.map(d=>`<span>${esc(d.name)} (${esc(d.code)})${DESTS.length>1?`<button type="button" data-rm="${esc(d.code)}" aria-label="Remove ${esc(d.name)}" title="Remove">✕</button>`:''}</span>`).join('')}</div>
+  P.innerHTML=`<div class="in"><div class="dstat" aria-label="Airports and their prices">${DESTS.map(destStatus).join('')}</div>
   <div class="fgrid">
    <div class="f apsearch"><span class="t">Find an airport</span><input type="search" id="dFind" autocomplete="off" spellcheck="false" placeholder="City, airport or country, like Málaga" aria-describedby="dChosen" aria-controls="dList"><ul class="aplist" id="dList"></ul><div class="apchosen sub" id="dChosen" role="status"></div><input type="hidden" id="dCode"></div>
    <div class="f"><span class="t">Name on the page</span><input type="text" id="dName" maxlength="40" placeholder="Málaga"></div>
@@ -695,13 +710,30 @@ function openDPanel(){
       P.hidden=true;P.innerHTML='';PENDING.add(code);setDest(code);waitForPrices(code);}
     catch(e){msg(e.message);b.disabled=false}
   };
-  P.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{
+  P.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async e=>{e.preventDefault();
     const d=destOf(b.dataset.rm);if(!confirm(`Remove ${d?.name||b.dataset.rm}? Its prices stop being checked.`))return;
     try{DESTS=await destApi('DELETE','/api/dests/'+encodeURIComponent(b.dataset.rm));
       if(!destOf(DST()))setDest(DESTS[0].code);else drawDest();openDPanel();}
     catch(e){msg(e.message)}
   });
 }
+// Status of each destination's prices: where they come from, how many days, flight times, last update
+const ago=t=>{if(!t)return '';const m=Math.round((Date.now()-Date.parse(t))/6e4);return m<1?'just now':m<60?`${m} min ago`:m<1440?`${Math.round(m/60)} h ago`:new Date(t).toLocaleDateString('en-GB',{day:'numeric',month:'short'})};
+function destStatus(d){
+  const S=L?.status||{},rs=[...APTS.map(a=>`${a}-${d.code}`),...APTS.map(a=>`${d.code}-${a}`)],xs=rs.map(r=>[r,S[r]]);
+  const g=xs.filter(([,x])=>x?.src==='google').length,t=xs.filter(([,x])=>x?.src==='tp').length,tm=xs.filter(([,x])=>x?.times).length;
+  const known=xs.some(([,x])=>x),last=xs.map(([,x])=>x?.at).filter(Boolean).sort().pop();
+  let cls,txt;
+  if(!known){cls='wait';txt=PENDING.has(d.code)?'Getting first prices…':'Waiting for the first price check';}
+  else if(!g&&!t){cls='';txt='No flights found';}
+  else if(g&&tm>=g){cls='ok';txt=`Google prices with flight times, ${g} of ${rs.length} routes`;}
+  else if(g){cls='part';txt=`Google prices on ${g} of ${rs.length} routes${t?`, first prices on ${t} more`:''}. Flight times come with the next full run.`;}
+  else{cls='wait';txt=`First prices on ${t} of ${rs.length} routes. Waiting for Google prices (about 10 min after adding).`;}
+  const rows=xs.map(([r,x])=>{const [o,de]=r.split('-');return `<tr><td>${esc(o)} → ${esc(de)}</td><td>${!x||!x.src?'None found':x.src==='google'?'Google':'Travelpayouts'}</td><td>${x?.src?kr(x.any):'–'}</td><td>${x?.src?kr(x.direct):'–'}</td><td>${x?.times?'Yes':'–'}</td></tr>`}).join('');
+  return `<details><summary><span class="dot ${cls}" aria-hidden="true"></span><span><span class="dn">${esc(d.name)} (${esc(d.code)})</span><br><span class="ds">${esc(txt)}${last?` · updated ${ago(last)}`:''}</span></span>${DESTS.length>1?`<button type="button" class="rm" data-rm="${esc(d.code)}" aria-label="Remove ${esc(d.name)}">Remove</button>`:''}</summary>
+    <table><thead><tr><th>Route</th><th>Prices from</th><th>Days</th><th>Direct</th><th>Times</th></tr></thead><tbody>${rows}</tbody></table></details>`;
+}
+
 // Airport list for the search: [code, airport name, city, country, 1 = large airport], loaded when first needed
 let AIRPORTS=null;
 const loadAirports=()=>Array.isArray(AIRPORTS)?Promise.resolve(AIRPORTS):AIRPORTS||(AIRPORTS=fetch('airports.json').then(r=>{if(!r.ok)throw 0;return r.json()}).catch(()=>{AIRPORTS=null;return null}));
