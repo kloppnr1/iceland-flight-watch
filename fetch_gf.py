@@ -41,7 +41,21 @@ def save_prog():
 
 save_prog()
 start, end = datetime.date.fromisoformat(prog['start']), datetime.date.fromisoformat(prog['end'])
-SITE = 'https://fly.xn--strmsparer-2cb.dk'
+# The server answers on both names; cloud network settings only accept plain-letter names, so try that first.
+SITES = ['https://fly.stromsparer.dk', 'https://fly.xn--strmsparer-2cb.dk']
+
+
+def pick_site():
+    for u in SITES:
+        try:
+            urllib.request.urlopen(urllib.request.Request(u + '/data/index.json', headers={'User-Agent': 'flight-watch-fetch'}), timeout=20)
+            return u
+        except Exception as e:
+            print('site not reachable:', u, e, flush=True)
+    return SITES[-1]
+
+
+SITE = pick_site()
 HOME = ['CPH', 'BLL', 'AAL', 'HAM']
 
 
