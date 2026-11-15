@@ -1,6 +1,6 @@
 """Price watches: a trip window the user wants to follow day by day.
 
-A watch: {id, name, out:[airports], home:[airports], from, to, min_days, max_days, direct, target, created}
+A watch: {id, name, dest, out:[airports], home:[airports], from, to, min_days, max_days, direct, target, created}
 The whole trip (out day and home day) must fall inside from..to, and the stay must be min_days..max_days.
 Each price check adds the cheapest matching round trip to the watch's history (data/watches.json).
 """
@@ -20,12 +20,13 @@ def series(cal, route, kind):
 def best_for(w, cal, today=None):
     today = str(today or datetime.date.today())
     kind = 'direct' if w.get('direct') else 'any'
+    D = w.get('dest') or 'KEF'
     lo, hi = max(w['from'], today), w['to']
     best = None
     for o in w.get('out') or APTS:
-        A = series(cal, f'{o}-KEF', kind)
+        A = series(cal, f'{o}-{D}', kind)
         for h in w.get('home') or APTS:
-            B = sorted((d, p) for d, p in series(cal, f'KEF-{h}', kind).items() if lo <= d <= hi)
+            B = sorted((d, p) for d, p in series(cal, f'{D}-{h}', kind).items() if lo <= d <= hi)
             for d1, p1 in A.items():
                 if not (lo <= d1 <= hi):
                     continue
