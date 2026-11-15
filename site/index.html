@@ -549,11 +549,12 @@ function renderPat(){
 function renderRel(){
   const delay=b=>{if(!b.est||!b.sched)return 0;const t=s=>+s.slice(0,2)*60+ +s.slice(3);let d=t(b.est)-t(b.sched);if(d<-600)d+=1440;return d;};
   const fl=BOARD.filter(b=>st.out.has(b.apt)&&(st.chDir==='both'||(st.chDir==='to')===(b.dir==='to KEF')));
-  if(!fl.length){$('view').innerHTML=empty('No flights seen yet for these filters.','The Keflavík flight board is read once a day.');return;}
+  if(!fl.length){$('view').innerHTML=empty('No flights seen yet for these filters.','The Keflavík flight board is read 4 times a day.');return;}
   const by=new Map();fl.forEach(b=>{const x=by.get(b.airline)||{n:0,c:0,d:0};x.n++;if(/cancel/i.test(b.status))x.c++;else if(delay(b)>=30)x.d++;by.set(b.airline,x)});
   const agg=[...by.entries()].sort((a,b)=>b[1].c/b[1].n-a[1].c/a[1].n||b[1].n-a[1].n);
   const pc=(a,n)=>Math.round(100*a/n);
-  $('view').innerHTML=`<div class="lead"><span>${fl.length} flights seen on Keflavík Airport's board over ${new Set(fl.map(b=>b.day)).size} day(s)</span><span>Read once a day</span></div>
+  const other=DST()!=='KEF'?`<p class="srcnote">Cancellations and delays are only collected for Keflavík (from Keflavík Airport's flight board). These are Keflavík flights, not ${esc(nm(DST()))}.</p>`:'';
+  $('view').innerHTML=`${other}<div class="lead"><span>${fl.length} flights seen on Keflavík Airport's board over ${new Set(fl.map(b=>b.day)).size} day(s)</span><span>Read 4 times a day</span></div>
   <div class="air">${agg.map(([a,x])=>`<div class="arow"><span class="n">${esc(a)}</span><span class="sub">${x.n} flights</span>
     <div class="meter" role="img" aria-label="${pc(x.c,x.n)}% cancelled, ${pc(x.d,x.n)}% delayed"><span class="mc" style="width:${pc(x.c,x.n)}%"></span><span class="md" style="width:${pc(x.d,x.n)}%"></span></div>
     <span class="sub"><b class="${x.c?'up':''}">${x.c} cancelled</b> (${pc(x.c,x.n)}%), ${x.d} delayed 30+ min (${pc(x.d,x.n)}%)</span></div>`).join('')}</div>
@@ -665,12 +666,10 @@ function noData(){
 }
 function drawDest(){
   $('dest').innerHTML=DESTS.map(d=>`<option value="${esc(d.code)}" ${d.code===DST()?'selected':''}>${esc(d.name)}${d.name!==d.code?` (${esc(d.code)})`:''}</option>`).join('')+'<option value="+">Airports and status…</option>';
-  $('relTab').hidden=DST()!=='KEF';  // the delays board is read from Keflavík Airport's website
 }
 const navOn=()=>document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x.dataset.v===view));
 function setDest(c){
   st.dest=c;lsSet('ifw_dest',c);st.route='ALL-'+c;st.limit=40;
-  if(view==='rel'&&c!=='KEF'){view='trips';navOn();}
   drawDest();drawFilters();render();
 }
 $('dest').onchange=e=>{const v=e.target.value;if(v==='+'){e.target.value=DST();openDPanel();return;}setDest(v);};
