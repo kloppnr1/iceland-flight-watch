@@ -83,7 +83,7 @@ nav button{padding-left:10px;padding-right:10px}
 nav button{border:0;background:none;font:600 14px/1.2 var(--font);color:var(--muted);padding:14px 4px 12px;cursor:pointer;border-bottom:3px solid transparent;min-height:48px}
 nav button.on{color:var(--ink);border-bottom-color:var(--lupine)}
 nav .s{display:none}
-@media (max-width:640px){nav .l{display:none}nav .s{display:inline}nav .in{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;padding:0 2px}nav button{font-size:12.5px;padding-left:1px;padding-right:1px}}
+@media (max-width:640px){nav .l{display:none}nav .s{display:inline}nav .in{justify-content:flex-start;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:0 6px;mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent)}nav .in::-webkit-scrollbar{display:none}nav button{flex:0 0 auto;font-size:14px;padding-left:11px;padding-right:11px;white-space:nowrap}}
 main{max-width:1120px;margin:0 auto;padding:14px 16px 40px}
 
 /* filters */
@@ -691,7 +691,7 @@ function noData(){
 function drawDest(){
   $('dest').innerHTML=DESTS.map(d=>`<option value="${esc(d.code)}" ${d.code===DST()?'selected':''}>${esc(d.name)}${d.name!==d.code?` (${esc(d.code)})`:''}</option>`).join('')+'<option value="+">Airports and status…</option>';
 }
-const navOn=()=>document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x.dataset.v===view));
+const navOn=()=>document.querySelectorAll('nav button').forEach(x=>{x.classList.toggle('on',x.dataset.v===view);if(x.dataset.v===view)x.scrollIntoView({block:'nearest',inline:'nearest'});});
 function setDest(c){
   st.dest=c;lsSet('ifw_dest',c);st.route='ALL-'+c;st.limit=40;
   drawDest();drawFilters();render();
