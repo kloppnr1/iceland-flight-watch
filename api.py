@@ -43,13 +43,14 @@ GF_FIRE_TOKEN = os.environ.get('GF_FIRE_TOKEN', '').strip()
 
 
 def fire_google_task():
-    """Start the cloud task that fetches Google prices for new destinations (its API trigger), if set up in .env."""
+    """Start the Google prices cloud task in its quick "new-only" mode (its API trigger), if set up in .env."""
     if not GF_FIRE_URL or not GF_FIRE_TOKEN:
         return
 
     def go():
         import urllib.request
-        req = urllib.request.Request(GF_FIRE_URL, data=b'{}', method='POST', headers={
+        # "new-only" tells the task to fetch only the destinations without Google prices (about 10 minutes)
+        req = urllib.request.Request(GF_FIRE_URL, data=b'{"text": "new-only"}', method='POST', headers={
             'Authorization': 'Bearer ' + GF_FIRE_TOKEN, 'anthropic-version': '2023-06-01',
             'anthropic-beta': 'experimental-cc-routine-2026-04-01', 'Content-Type': 'application/json'})
         try:
