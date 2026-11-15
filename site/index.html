@@ -667,7 +667,9 @@ function openDPanel(){
   find.oninput=async()=>{
     $('dCode').value='';$('dChosen').textContent='';
     const q=find.value;if(q.trim().length<2){list.innerHTML='';return;}
-    const all=await loadAirports();if(find.value!==q)return;
+    if(!Array.isArray(AIRPORTS))$('dChosen').textContent='Loading airports…';
+    const all=await loadAirports();if(find.value!==q)return;$('dChosen').textContent='';
+    if(all)AIRPORTS=all;
     if(!all){list.innerHTML='';$('dChosen').textContent='The airport list could not be loaded. Type the 3-letter code instead.';$('dCode').value=/^[a-z]{3}$/i.test(q.trim())?q.trim().toUpperCase():'';return;}
     const res=searchAirports(all,q);
     list.innerHTML=res.length?res.map((a,i)=>`<li><button type="button" data-i="${i}"><b>${esc(a[0])}</b><span>${esc(a[2]||a[1])}<br><span class="sub">${esc(a[1])}, ${esc(a[3])}</span></span></button></li>`).join('')
@@ -692,7 +694,7 @@ function openDPanel(){
 }
 // Airport list for the search: [code, airport name, city, country, 1 = large airport], loaded when first needed
 let AIRPORTS=null;
-const loadAirports=()=>AIRPORTS||(AIRPORTS=fetch('airports.json').then(r=>{if(!r.ok)throw 0;return r.json()}).catch(()=>{AIRPORTS=null;return null}));
+const loadAirports=()=>Array.isArray(AIRPORTS)?Promise.resolve(AIRPORTS):AIRPORTS||(AIRPORTS=fetch('airports.json').then(r=>{if(!r.ok)throw 0;return r.json()}).catch(()=>{AIRPORTS=null;return null}));
 const fold=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 function searchAirports(all,q){
   const w=fold(q).trim(),out=[];
