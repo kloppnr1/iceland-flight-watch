@@ -266,6 +266,7 @@ h2{font-size:17px;margin:22px 0 10px;font-weight:700}
   <button data-v="cal"><span class="l">Price calendar</span><span class="s">Calendar</span></button>
   <button data-v="changes"><span class="l">Changes</span><span class="s">Changes</span></button>
   <button data-v="pat"><span class="l">Patterns</span><span class="s">Patterns</span></button>
+  <button data-v="any"><span class="l">Anywhere</span><span class="s">Anywhere</span></button>
   <button data-v="rel" id="relTab"><span class="l">Cancellations &amp; delays</span><span class="s">Delays</span></button>
 </div></nav>
 <main>
@@ -274,6 +275,7 @@ h2{font-size:17px;margin:22px 0 10px;font-weight:700}
 </main>
 <script>
 const APTS=['CPH','BLL','AAL','HAM'],NAME={CPH:'Copenhagen',BLL:'Billund',AAL:'Aalborg',HAM:'Hamburg'};
+const ANY_FROM=[...APTS,'KEF'];let ANY=null,ANYAP={};
 let DESTS=[{code:'KEF',name:'Keflavík',place:'Iceland'}];
 const destOf=c=>DESTS.find(d=>d.code===c);
 const nm=c=>NAME[c]||destOf(c)?.name||c;
@@ -292,7 +294,7 @@ const EXT='<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2h6v6M10 2 3 
 const lnk=(href,label,cls='')=>`<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener">${label}${EXT}</a>`;
 let L=null,CH=[],BOARD=[],WATCH=[],BAGS=null,PAT=null,view='trips';
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}};const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
-const st={dest:lsGet('ifw_dest','KEF'),bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),minM:1,maxM:6,unit:lsGet('ifw_stay_unit','m'),minD:30,maxD:182,stops:'direct',from:'',to:'',maxp:'',
+const st={dest:lsGet('ifw_dest','KEF'),bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),anyFrom:new Set(ANY_FROM),minM:1,maxM:6,unit:lsGet('ifw_stay_unit','m'),minD:30,maxD:182,stops:'direct',from:'',to:'',maxp:'',
   route:'ALL-'+lsGet('ifw_dest','KEF'),kind:'direct',chDir:'both',chWhat:'drops',limit:40,open:matchMedia('(min-width:900px)').matches};
 
 function series(route,kind,prev){const src=prev?L.prev_cal:L.cal;const c=src?.[route]?.[kind];const m=new Map();if(!c)return m;let d=c.start;c.p.forEach(v=>{if(v)m.set(d,v);d=add(d,1)});return m;}
@@ -345,6 +347,8 @@ function drawFilters(){
       (kinds.includes('direct')?`<label class="sw"><input type="checkbox" id="calDirect" ${st.kind==='direct'?'checked':''}>Direct only</label>`:`<span class="sub">No direct flights on this route</span>`)+`</div>`;
   } else if(view==='pat'){
     h+=`<div class="bar">${directSw()}</div>`;
+  } else if(view==='any'){
+    h+=chips('anyFrom','Fly from',ANY_FROM,st.anyFrom);
   } else if(view==='changes'){
     h+=`<div class="bar">${seg('chWhat',[['drops','Drops'],['rises','Rises'],['all','All']],st.chWhat,'Show')}</div>`;
     h+=more(radios('chDir','Direction',[['both','Both'],['to','To '+esc(PLACE())],['from','From '+esc(PLACE())]],st.chDir)+chips('out','Danish or German airport',APTS,st.out));
@@ -496,6 +500,26 @@ function renderChanges(){
     return `<article class="card"><div class="top"><div><div class="head">${fd(c.date)}</div><div class="sub">${esc(nm(o))} → ${esc(nm(d))} ${c.kind==='direct'?'<span class="tag direct">Direct</span>':''}</div></div><div class="pr"><div class="price">${c.new!=null?kr(c.new)+'<small>kr</small>':'<small>Gone</small>'}</div><span class="chg ${cls}">${diff!=null?(diff<0?'▼ ':'▲ ')+KR(Math.abs(diff)):esc(c.what)}</span></div></div>
     <div class="sub" style="margin-top:6px">${esc(c.what)}${c.old!=null?`, was ${KR(c.old)}`:''}. Seen ${D(c.seen.slice(0,10)).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}.</div>
     <div class="links">${lnk(gf(o,d,c.date,c.kind==='direct'),'Open in Google Flights')}</div></article>`}).join('')}</div>${moreBtn(shown.length,rows.length)}`;
+  wireMore();
+}
+
+// ---------- anywhere ----------
+async function renderAny(){
+  if(!ANY){$('view').innerHTML='<p class="sub">Loading…</p>';
+    let al;[ANY,al]=await Promise.all([fetch('data/anywhere.json',{cache:'no-store'}).then(r=>r.ok?r.json():{routes:{}}).catch(()=>({routes:{}})),loadAirports()]);
+    (al||[]).forEach(a=>ANYAP[a[0]]=a);
+    if(view!=='any')return;}
+  const ap=ANYAP;
+  const t=iso(new Date()),best={};
+  for(const [r,[date,p]] of Object.entries(ANY.routes||{})){const [o,d]=r.split('-');
+    if(!st.anyFrom.has(o)||date<t||ANY_FROM.includes(d)&&st.anyFrom.has(d))continue;
+    if(!best[d]||p<best[d].p)best[d]={o,date,p};}
+  const rows=Object.entries(best).sort((a,b)=>a[1].p-b[1].p);
+  if(!rows.length){$('view').innerHTML=empty('No anywhere prices yet.','They are added while the anywhere scan runs.');return;}
+  const shown=rows.slice(0,st.limit);
+  $('view').innerHTML=`<div class="lead"><span>${rows.length} destinations, cheapest one-way ticket in the next 6 months</span><span>Updated ${new Date(ANY.updated).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span></div><div class="list two">${shown.map(([d,b])=>{const a=ap[d];
+    return `<article class="card"><div class="top"><div><div class="head">${esc(a?a[2]||a[1]:d)} (${esc(d)})</div><div class="sub">${a?esc(a[3])+' · ':''}from ${esc(nm(b.o))}, ${fd(b.date)}</div></div><div class="pr"><div class="price">${kr(b.p)}<small>kr</small></div></div></div>
+    <div class="links">${lnk(gf(b.o,d,b.date,false),'Open in Google Flights')}</div></article>`}).join('')}</div>${moreBtn(shown.length,rows.length)}`;
   wireMore();
 }
 
@@ -768,7 +792,7 @@ async function waitForPrices(code){
   if(DST()===code){drawFilters();render();}
 }
 
-function render(){({trips:renderTrips,watch:renderWatches,cal:renderCal,changes:renderChanges,pat:renderPat,rel:renderRel})[view]();}
+function render(){({trips:renderTrips,watch:renderWatches,cal:renderCal,changes:renderChanges,pat:renderPat,any:renderAny,rel:renderRel})[view]();}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{view=b.dataset.v;navOn();st.limit=40;drawFilters();render();});
 (async()=>{
   try{

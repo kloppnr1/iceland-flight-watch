@@ -9,6 +9,9 @@ POST   /api/dests            -> add a destination {code, name, place} (header X-
 DELETE /api/dests/<CODE>     -> remove a destination (header X-Pin)
 POST   /api/cal              -> Google calendars from the cloud task (header X-Upload-Token);
                                 {"merge": true} only adds/replaces the files sent instead of replacing all
+POST   /api/anywhere         -> cheapest one-way prices to anywhere from the "anywhere" scan (header X-Upload-Token);
+                                {"rows": [[FROM, TO, "YYYY-MM-DD", price], ...]} - each route sent is replaced by the
+                                cheapest of its rows; other routes are kept. Written to data/anywhere.json
 """
 import json, os, re, uuid, datetime, threading, subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -134,6 +137,8 @@ class H(BaseHTTPRequestHandler):
             return self.upload_cal()
         if self.path.rstrip('/') == '/api/dests':
             return self.add_dest()
+        if self.path.rstrip('/') == '/api/anywhere':
+            return self.upload_anywhere()
         if self.path.rstrip('/') != '/api/watches':
             return self.reply(404, {'error': 'not found'})
         if not self.ok_pin():
@@ -239,6 +244,40 @@ class H(BaseHTTPRequestHandler):
                 open(os.path.join(CAL, name), 'w').write(text)
         subprocess.Popen(['systemctl', 'start', '--no-block', 'flight-watch.service'])
         self.reply(200, {'saved': len(ok)})
+
+    def upload_anywhere(self):
+        if not UPLOAD_TOKEN or self.headers.get('X-Upload-Token', '') != UPLOAD_TOKEN:
+            return self.reply(403, {'error': 'forbidden'})
+        try:
+            n = int(self.headers.get('Content-Length', 0))
+            if n > 2000000:
+                raise ValueError('too big')
+            rows = json.loads(self.rfile.read(n))['rows']
+            new = {}
+            for o, d, day, p in rows:
+                if not (re.fullmatch(r'[A-Z]{3}', o) and re.fullmatch(r'[A-Z]{3}', d)):
+                    raise ValueError('bad airport')
+                datetime.date.fromisoformat(day)
+                p = round(float(p))
+                k = f'{o}-{d}'
+                if k not in new or p < new[k][1]:
+                    new[k] = [day, p]
+        except Exception as e:
+            return self.reply(400, {'error': str(e)[:100]})
+        path = os.path.join(DATA, 'anywhere.json')
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+        with lock:
+            try:
+                cur = json.load(open(path))
+            except Exception:
+                cur = {'routes': {}}
+            today = str(datetime.date.today())
+            routes = {k: v for k, v in cur.get('routes', {}).items() if v[0] >= today}  # drop passed dates
+            for k, (day, p) in new.items():
+                routes[k] = [day, p, now]
+            json.dump({'updated': now, 'routes': routes}, open(path + '.tmp', 'w'), separators=(',', ':'))
+            os.replace(path + '.tmp', path)
+        self.reply(200, {'saved': len(new), 'routes': len(routes)})
 
     def log_message(self, *a):
         pass  # no access log; fire_google_task prints to the journal
