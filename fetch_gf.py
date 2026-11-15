@@ -6,11 +6,17 @@ then one number per day = cheapest one-way price in DKK / 10 (0 = no flight).
 Routes: the home airports to and from each destination on the page's list (data/dests.json, or DESTS=KEF,AGP).
 Routes the server has no Google prices for yet (a destination that was just added) go first, and with
 UPLOAD_TOKEN set their calendars are uploaded as soon as they are done, before the slow day-by-day pass.
+
+--new-only: only the routes with no Google prices on the server yet, calendars only (a few minutes),
+uploaded at once; prints "nothing new" and stops if there are none. For a destination that was just added.
+Usage: python3 fetch_gf.py [--new-only] [folder]
 """
 import json, os, sys, glob, datetime, subprocess, time, urllib.request
 
 FLI = os.environ.get('FLI', 'fli')
-final = sys.argv[1] if len(sys.argv) > 1 else 'cal'
+NEW_ONLY = '--new-only' in sys.argv
+args = [a for a in sys.argv[1:] if not a.startswith('--')]
+final = args[0] if args else ('calnew' if NEW_ONLY else 'cal')
 out = final + '.new'
 os.makedirs(out, exist_ok=True)
 # Resume support: progress.json in the work folder remembers what is done, so a restarted session
@@ -18,7 +24,7 @@ os.makedirs(out, exist_ok=True)
 prog_path = os.path.join(out, 'progress.json')
 prog = json.load(open(prog_path)) if os.path.exists(prog_path) else {}
 now = datetime.datetime.now(datetime.timezone.utc)
-fresh = not prog or (now - datetime.datetime.fromisoformat(prog['started'])).total_seconds() > 20 * 3600
+fresh = NEW_ONLY or not prog or (now - datetime.datetime.fromisoformat(prog['started'])).total_seconds() > 20 * 3600
 if fresh:
     for f in glob.glob(os.path.join(out, '*.txt')) + glob.glob(os.path.join(out, '*.json')):
         os.remove(f)
@@ -61,6 +67,13 @@ if latest:
 else:
     new = []
 print('destinations', DESTS, '- new routes first:', [f'{o}-{d}' for o, d in new], flush=True)
+if NEW_ONLY:
+    if not new:
+        print('nothing new')
+        sys.exit(0)
+    if not os.environ.get('UPLOAD_TOKEN'):
+        sys.exit('--new-only needs UPLOAD_TOKEN')
+    routes = new
 
 
 def quick_upload():
@@ -123,6 +136,10 @@ for i_route, (o, d) in enumerate(routes):
         prog['cal_done'].append(f'{o}-{d}-{kind}'); save_prog()
 if len(new) == len(routes) and not prog.get('quick_sent'):
     quick_upload(); prog['quick_sent'] = True; save_prog()
+
+if NEW_ONLY:
+    print('new routes done')
+    sys.exit(0)
 
 # ---- Fill gaps day by day for the smaller airports ----
 # fli's calendar search skips many days on thin routes (Billund, Aalborg, Hamburg),
