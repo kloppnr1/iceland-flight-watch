@@ -1,5 +1,7 @@
-"""Cheapest one-way prices to anywhere: Google Flights calendars (fli) from the home airports to a long list
-of destinations worldwide, for the next 6 months (3 windows of 61 days, the most one fli call returns).
+"""Prices to anywhere: Google Flights calendars (fli) between the home airports and a long list of destinations
+worldwide, both ways, for the next 6 months (3 windows of 61 days, the most one fli call returns).
+The page shows the cheapest one-way ticket per destination, and round trips (out + home on the same airport)
+for a chosen number of days, from these day-by-day one-way prices.
 
 Results are saved to a local file after every lookup, so a stopped run continues where it stopped
 (within 20 hours; after that a run starts over).
@@ -30,8 +32,14 @@ TOKEN = os.environ.get('UPLOAD_TOKEN', '').strip()
 
 today = datetime.date.today()
 wins = [(today + datetime.timedelta(days=1 + 61 * i), today + datetime.timedelta(days=61 * (i + 1))) for i in range(3)]
-# Danish/German airports to each other are left out; from Keflavík they are real destinations
-jobs = [(o, d, a, b) for o in HOME for d in DEST for a, b in wins if o != d and not (o != 'KEF' and d in HOME)]
+# Danish/German airports to each other are left out; from Keflavík they are real destinations.
+# Each pair is looked up both ways (out and home), one pair after the other, so round trips show as the scan goes.
+pairs = []
+for o in HOME:
+    for d in DEST:
+        if o != d and not (o != 'KEF' and d in HOME) and (d, o) not in pairs:
+            pairs.append((o, d))
+jobs = [(x, y, a, b) for o, d in pairs for x, y in [(o, d), (d, o)] for a, b in wins]
 
 
 def lookup(j):
@@ -62,22 +70,26 @@ def read_all():
 
 
 def upload(routes):
-    """Send the cheapest day of each route in `routes`, taken from everything found so far (all windows)."""
+    """Send the day-by-day prices of each route in `routes`, from everything found so far (all windows)."""
     if not TOKEN or not routes:
         return
-    rows = {}
+    days = {}
     for (o, d, _), r in read_all().items():
         if f'{o}-{d}' in routes:
-            for row in r or []:
-                k = (row[0], row[1])
-                if k not in rows or row[3] < rows[k][3]:
-                    rows[k] = row
-    body = json.dumps({'rows': list(rows.values())}).encode()
+            for _o, _d, day, p in r or []:
+                m = days.setdefault(f'{o}-{d}', {})
+                m[day] = min(round(p), m.get(day, 10 ** 9))
+    cal = {}
+    for k, m in days.items():
+        d0 = datetime.date.fromisoformat(min(m))
+        n = (datetime.date.fromisoformat(max(m)) - d0).days + 1
+        cal[k] = {'start': str(d0), 'p': [m.get(str(d0 + datetime.timedelta(days=i)), 0) for i in range(n)]}
+    body = json.dumps({'cal': cal}).encode()
     for site in SITES:
         req = urllib.request.Request(site + '/api/anywhere', data=body, method='POST',
                                      headers={'Content-Type': 'application/json', 'X-Upload-Token': TOKEN, 'User-Agent': 'flight-watch-anywhere'})
         try:
-            print('upload', len(rows), 'routes:', urllib.request.urlopen(req, timeout=60).read().decode(), flush=True)
+            print('upload', len(cal), 'routes:', urllib.request.urlopen(req, timeout=60).read().decode(), flush=True)
             return
         except urllib.error.HTTPError as e:
             print('upload refused', e.code, e.read()[:200], flush=True)

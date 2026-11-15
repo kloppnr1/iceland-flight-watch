@@ -9,9 +9,11 @@ POST   /api/dests            -> add a destination {code, name, place} (header X-
 DELETE /api/dests/<CODE>     -> remove a destination (header X-Pin)
 POST   /api/cal              -> Google calendars from the cloud task (header X-Upload-Token);
                                 {"merge": true} only adds/replaces the files sent instead of replacing all
-POST   /api/anywhere         -> cheapest one-way prices to anywhere from the "anywhere" scan (header X-Upload-Token);
-                                {"rows": [[FROM, TO, "YYYY-MM-DD", price], ...]} - each route sent is replaced by the
-                                cheapest of its rows; other routes are kept. Written to data/anywhere.json
+POST   /api/anywhere         -> prices to anywhere from the "anywhere" scan (header X-Upload-Token):
+                                {"cal": {"CPH-EDI": {"start": "YYYY-MM-DD", "p": [price per day, 0 = none]}}}
+                                (older form: {"rows": [[FROM, TO, "YYYY-MM-DD", price], ...]}). Each route sent is
+                                replaced; other routes are kept. Written to data/anywhere.json:
+                                routes = cheapest day per route [date, price, updated], cal = day-by-day prices
 """
 import json, os, re, uuid, datetime, threading, subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -252,7 +254,15 @@ class H(BaseHTTPRequestHandler):
             n = int(self.headers.get('Content-Length', 0))
             if n > 2000000:
                 raise ValueError('too big')
-            rows = json.loads(self.rfile.read(n))['rows']
+            body = json.loads(self.rfile.read(n))
+            rows, cals = body.get('rows') or [], {}
+            for k, c in (body.get('cal') or {}).items():
+                if not re.fullmatch(r'[A-Z]{3}-[A-Z]{3}', k):
+                    raise ValueError('bad route')
+                s0 = datetime.date.fromisoformat(c['start'])
+                ps = [max(0, round(float(x))) for x in c['p']][:400]
+                cals[k] = {'start': str(s0), 'p': ps}
+                rows += [[*k.split('-'), str(s0 + datetime.timedelta(days=i)), x] for i, x in enumerate(ps) if x]
             new = {}
             for o, d, day, p in rows:
                 if not (re.fullmatch(r'[A-Z]{3}', o) and re.fullmatch(r'[A-Z]{3}', d)):
@@ -273,9 +283,14 @@ class H(BaseHTTPRequestHandler):
                 cur = {'routes': {}}
             today = str(datetime.date.today())
             routes = {k: v for k, v in cur.get('routes', {}).items() if v[0] >= today}  # drop passed dates
+            cal = cur.get('cal', {})
             for k, (day, p) in new.items():
                 routes[k] = [day, p, now]
-            json.dump({'updated': now, 'routes': routes}, open(path + '.tmp', 'w'), separators=(',', ':'))
+            for k, c in cals.items():
+                cal[k] = c
+                if k not in new:  # no prices at all now: the route has no flights in the next 6 months
+                    routes.pop(k, None)
+            json.dump({'updated': now, 'routes': routes, 'cal': cal}, open(path + '.tmp', 'w'), separators=(',', ':'))
             os.replace(path + '.tmp', path)
         self.reply(200, {'saved': len(new), 'routes': len(routes)})
 
