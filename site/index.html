@@ -517,7 +517,7 @@ function watchForm(){
    ${chips('wout','Fly out from',APTS,W.out)}${chips('whome','Fly home to',APTS,W.home)}
    <div class="f"><span class="t">Good enough at (kr, round trip)</span><input type="number" inputmode="numeric" id="wTarget" value="${W.target}" placeholder="2200"></div>
    <div class="f"><span class="t">Flights</span><label class="sw" style="min-height:42px"><input type="checkbox" id="wDirect" ${W.direct?'checked':''}>Direct only</label></div>
-   <div class="f"><span class="t">PIN</span><input type="password" inputmode="numeric" autocomplete="off" id="wPin" value="${esc(getPin())}" placeholder="Needed to save"></div>
+   <div class="f"><span class="t">PIN (6 digits)</span><input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" id="wPin" value="${esc(getPin())}" placeholder="6-digit PIN"></div>
   </div>
   <div class="act"><button class="btn" id="wSave" type="button">Add watch</button><span class="msg" id="wMsg" role="status"></span></div></details>`;
 }
@@ -542,6 +542,7 @@ function wireWatchForm(){
     if(W.to<=W.from)return wMsg('The end date must be after the start date.');
     if(!(min>0)||!(max>=min))return wMsg('Check the stay: the longest stay must be at least the shortest.');
     if(!W.out.size||!W.home.size)return wMsg('Pick at least one airport each way.');
+    if(!/^\d{6}$/.test(($('wPin').value||'').trim()))return wMsg('The PIN must be 6 digits.');
     const btn=$('wSave');btn.disabled=true;wMsg('Saving…',true);
     try{WATCH=await api('POST','/api/watches',{name:W.name.trim(),out:[...W.out],home:[...W.home],from:W.from,to:W.to,min_days:min,max_days:max,direct:W.direct,target:W.target?+W.target:null});
       W.name='';$('wName').value='';wMsg('Watch added. Prices show after the next check.',true);render();}
