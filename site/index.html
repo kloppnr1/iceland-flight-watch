@@ -31,18 +31,14 @@ a{color:var(--lupine)}
 /* header + tabs */
 header{max-width:1120px;margin:0 auto;padding:20px 16px 10px;display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
 h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.02em}
-h1 .k{color:var(--lupine);display:inline-block;position:relative;animation:takeoff 2.2s cubic-bezier(.45,0,.25,1) .3s both}
-h1 .k::before{content:"";position:absolute;right:100%;top:55%;width:34px;height:2px;margin-right:2px;border-radius:2px;background:linear-gradient(90deg,transparent,currentColor);opacity:0;animation:streak 2.2s ease-out .3s both}
-@keyframes takeoff{
-  0%{transform:translate(-170px,14px) rotate(0);opacity:0}
-  8%{opacity:1}
-  45%{transform:translate(-80px,14px) rotate(0)}
-  58%{transform:translate(-48px,11px) rotate(-16deg)}
-  80%{transform:translate(-8px,-7px) rotate(-14deg)}
-  92%{transform:translate(2px,-2px) rotate(-4deg)}
-  100%{transform:translate(0,0) rotate(0);opacity:1}
-}
-@keyframes streak{0%,20%{opacity:0}45%,75%{opacity:.55}100%{opacity:0}}
+h1 .k{color:var(--lupine);display:inline-block;animation:fly-x 2.6s cubic-bezier(.4,0,.2,1) .4s both,fly-in .5s linear .4s both}
+h1 .k i{font-style:normal;display:inline-block;position:relative;animation:fly-y 2.6s linear .4s both,fly-tilt 2.6s linear .4s both}
+h1 .k i::before{content:"";position:absolute;right:100%;top:55%;width:34px;height:2px;margin-right:2px;border-radius:2px;background:linear-gradient(90deg,transparent,currentColor);animation:streak 2.6s linear .4s both}
+@keyframes fly-in{from{opacity:0}to{opacity:1}}
+@keyframes fly-x{from{translate:-170px 0}to{translate:0 0}}
+@keyframes fly-y{0%,38%{translate:0 14px;animation-timing-function:cubic-bezier(.5,0,.3,1)}100%{translate:0 0}}
+@keyframes fly-tilt{0%,36%{rotate:0deg;animation-timing-function:ease-in-out}66%{rotate:-15deg;animation-timing-function:ease-in-out}100%{rotate:0deg}}
+@keyframes streak{0%{opacity:0;animation-timing-function:ease-out}30%{opacity:.55}70%{opacity:.55;animation-timing-function:ease-in}100%{opacity:0}}
 .hl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .dsel{display:flex;align-items:center;gap:6px;font-weight:600;font-size:15px}
 .dsel select{width:auto;min-width:0;max-width:72vw;font-weight:600;min-height:40px;padding:6px 10px}
@@ -258,11 +254,11 @@ h2{font-size:17px;margin:22px 0 10px;font-weight:700}
   .wsub{display:none}
   .fgrid{grid-template-columns:1fr}
 }
-@media (prefers-reduced-motion:reduce){*{transition:none!important}h1 .k,h1 .k::before{animation:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}h1 .k,h1 .k i,h1 .k i::before{animation:none}}
 </style>
 </head>
 <body>
-<header><div class="hl"><h1>Flight Watch <span class="k">✈</span></h1><label class="dsel">to <select id="dest" aria-label="Destination airport"><option>Keflavík</option></select></label></div><div class="status" id="status">Loading prices…</div></header>
+<header><div class="hl"><h1>Flight Watch <span class="k"><i>✈</i></span></h1><label class="dsel">to <select id="dest" aria-label="Destination airport"><option>Keflavík</option></select></label></div><div class="status" id="status">Loading prices…</div></header>
 <div class="dpanel" id="dpanel" hidden></div>
 <nav aria-label="Views"><div class="in">
   <button data-v="trips" class="on"><span class="l">Cheapest flights</span><span class="s">Flights</span></button>
