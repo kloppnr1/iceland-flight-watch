@@ -30,7 +30,21 @@ SYD MEL AKL""".split()
 SITES = [os.environ['SITE']] if os.environ.get('SITE') else ['https://fly.stromsparer.dk', 'https://fly.xn--strmsparer-2cb.dk']
 TOKEN = os.environ.get('UPLOAD_TOKEN', '').strip()
 
-today = datetime.date.today()
+# A results file older than 20 hours belongs to an earlier run: start over so prices are fresh.
+# The run's start day is kept with it, so a restart after midnight continues the same date windows.
+meta = OUT + '.started'
+try:
+    t_start, day_start = open(meta).read().split()
+    fresh = time.time() - float(t_start) > 20 * 3600
+except Exception:
+    fresh = True
+if fresh and not UPLOAD_ONLY:
+    for f in (OUT, meta):
+        if os.path.exists(f):
+            os.remove(f)
+    day_start = str(datetime.date.today())
+    open(meta, 'w').write(f'{time.time()} {day_start}')
+today = datetime.date.fromisoformat(day_start) if not fresh or not UPLOAD_ONLY else datetime.date.today()
 wins = [(today + datetime.timedelta(days=1 + 61 * i), today + datetime.timedelta(days=61 * (i + 1))) for i in range(3)]
 # Danish/German airports to each other are left out; from Keflavík they are real destinations.
 # Each pair is looked up both ways (out and home), one pair after the other, so round trips show as the scan goes.
@@ -102,13 +116,6 @@ if UPLOAD_ONLY:
     upload({f'{o}-{d}' for (o, d, _), r in read_all().items()})
     sys.exit(0)
 
-# A results file older than 20 hours belongs to an earlier run: start over so prices are fresh.
-meta = OUT + '.started'
-if not os.path.exists(meta) or time.time() - float(open(meta).read() or 0) > 20 * 3600:
-    for f in (OUT, meta):
-        if os.path.exists(f):
-            os.remove(f)
-    open(meta, 'w').write(str(time.time()))
 done = {k for k, r in read_all().items() if r is not None}
 todo = [j for j in jobs if (j[0], j[1], str(j[2])) not in done]
 lock = threading.Lock()
