@@ -1,6 +1,7 @@
 # Iceland Flight Watch (static page + data, and a small API for watches and uploads), on its own subdomain.
 fly.xn--strmsparer-2cb.dk, fly.stromsparer.dk {
 	root * /srv/flight-watch
+	encode zstd gzip
 	header Cache-Control "no-cache"
 	@private path /data/runs/* /data/lows.json
 	respond @private 404

@@ -204,8 +204,16 @@ dump('lows.json', lows)
 dump('changes.json', changes)
 dump('board.json', board)
 dump('dests.json', DESTS)
-dump(f'runs/{now.strftime("%Y-%m-%dT%H%M")}.json', {'run_at': run_at, 'cal': gcal, 'tp': tp})
+# Archive this check only when the Google prices differ from the last archived check: the server also
+# rebuilds between uploads (timer, new destination), and identical copies would grow the archive forever.
 runs = sorted(os.path.basename(p)[:-5] for p in glob.glob(os.path.join(data, 'runs', '*.json')))
+try:
+    last_cal = json.load(open(os.path.join(data, 'runs', runs[-1] + '.json'))).get('cal') if runs else None
+except Exception:
+    last_cal = None
+if last_cal != gcal:
+    dump(f'runs/{now.strftime("%Y-%m-%dT%H%M")}.json', {'run_at': run_at, 'cal': gcal, 'tp': tp})
+    runs = sorted(os.path.basename(p)[:-5] for p in glob.glob(os.path.join(data, 'runs', '*.json')))
 dump('index.json', {'runs': runs, 'last': run_at})
 print('ok', run_at, {k: list(v) + (['tp'] if k in src else []) for k, v in cal.items()}, len(tp['ow']), 'tp one-way', len(tp['rt']), 'tp round trips',
       len(changes), 'changes', len(board), 'board rows')

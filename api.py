@@ -15,7 +15,7 @@ POST   /api/anywhere         -> prices to anywhere from the "anywhere" scan (hea
                                 replaced; other routes are kept. Written to data/anywhere.json:
                                 routes = cheapest day per route [date, price, updated], cal = day-by-day prices
 """
-import json, os, re, uuid, datetime, threading, subprocess
+import json, os, re, uuid, time, hmac, datetime, threading, subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import watches
 
@@ -41,6 +41,18 @@ def load_dests():
 def save_dests(ds):
     json.dump(ds, open(DEST_FILE, 'w'), indent=1, ensure_ascii=False)
     json.dump(ds, open(os.path.join(DATA, 'dests.json'), 'w'), ensure_ascii=False)
+
+
+# Wrong PINs: at most 5 per address in 15 minutes and 40 in all per hour, then 429 until the window passes.
+# The address is the one Caddy adds last to X-Forwarded-For (the real client; earlier entries can be faked).
+BAD = []  # (time, address) of wrong PINs
+BAD_PER_ADDR, BAD_ADDR_SECS, BAD_ALL, BAD_ALL_SECS = 5, 900, 40, 3600
+
+
+def pin_blocked(addr, now=None):
+    now = now or time.time()
+    BAD[:] = [(t, a) for t, a in BAD if now - t < BAD_ALL_SECS]
+    return len(BAD) >= BAD_ALL or sum(1 for t, a in BAD if a == addr and now - t < BAD_ADDR_SECS) >= BAD_PER_ADDR
 
 
 GF_FIRE_URL = os.environ.get('GF_FIRE_URL', '').strip()
@@ -121,9 +133,21 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def ok_pin(self):
-        if PIN and self.headers.get('X-Pin', '').strip() == PIN:
-            return True
+        addr = (self.headers.get('X-Forwarded-For') or self.client_address[0]).split(',')[-1].strip()
+        with lock:
+            if pin_blocked(addr):
+                self.reply(429, {'error': 'Too many wrong PINs. Try again in a while.'})
+                return False
+            if PIN and hmac.compare_digest(self.headers.get('X-Pin', '').strip().encode(), PIN.encode()):
+                return True
+            BAD.append((time.time(), addr))
         self.reply(403, {'error': 'Wrong PIN'})
+        return False
+
+    def ok_token(self):
+        if UPLOAD_TOKEN and hmac.compare_digest(self.headers.get('X-Upload-Token', '').encode(), UPLOAD_TOKEN.encode()):
+            return True
+        self.reply(403, {'error': 'forbidden'})
         return False
 
     def do_GET(self):
@@ -212,8 +236,8 @@ class H(BaseHTTPRequestHandler):
 
     def upload_cal(self):
         # Google calendars from the cloud task: {"files": {"CPH-KEF-any.txt": "<start>\n<numbers>"}}
-        if not UPLOAD_TOKEN or self.headers.get('X-Upload-Token', '') != UPLOAD_TOKEN:
-            return self.reply(403, {'error': 'forbidden'})
+        if not self.ok_token():
+            return
         try:
             n = int(self.headers.get('Content-Length', 0))
             if n > 4000000:
@@ -248,8 +272,8 @@ class H(BaseHTTPRequestHandler):
         self.reply(200, {'saved': len(ok)})
 
     def upload_anywhere(self):
-        if not UPLOAD_TOKEN or self.headers.get('X-Upload-Token', '') != UPLOAD_TOKEN:
-            return self.reply(403, {'error': 'forbidden'})
+        if not self.ok_token():
+            return
         try:
             n = int(self.headers.get('Content-Length', 0))
             if n > 2000000:
@@ -287,9 +311,14 @@ class H(BaseHTTPRequestHandler):
             for k, (day, p) in new.items():
                 routes[k] = [day, p, now]
             for k, c in cals.items():
-                cal[k] = c
+                cal[k] = {**c, 'at': now}
                 if k not in new:  # no prices at all now: the route has no flights in the next 6 months
                     routes.pop(k, None)
+            # drop what no scan has refreshed for a week (a destination taken off the scan list) and passed calendars
+            old = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)).isoformat(timespec='seconds')
+            routes = {k: v for k, v in routes.items() if len(v) < 3 or v[2] >= old}
+            last_day = lambda c: str(datetime.date.fromisoformat(c['start']) + datetime.timedelta(days=len(c['p']) - 1))
+            cal = {k: c for k, c in cal.items() if c.get('at', now) >= old and last_day(c) >= today}
             json.dump({'updated': now, 'routes': routes, 'cal': cal}, open(path + '.tmp', 'w'), separators=(',', ':'))
             os.replace(path + '.tmp', path)
         self.reply(200, {'saved': len(new), 'routes': len(routes)})
