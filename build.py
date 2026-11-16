@@ -187,7 +187,8 @@ for route in ROUTES:
     D = route.split('-')[1] if route.split('-')[0] in HOME else route.split('-')[0]
     at = mtime(os.path.join(APP, 'tp', D + '.json')) if route in src else mtime(os.path.join(cal_dir, route + '-any.txt'))
     status[route] = {'src': src.get(route, 'google'), 'any': days.get('any', 0), 'direct': days.get('direct', 0),
-                     'times': route in gdet, 'at': at}
+                     'times': route in gdet, 'times_at': mtime(os.path.join(cal_dir, route + '-details.json')) if route in gdet else None,
+                     'at': at}
 
 latest = {'run_at': run_at, 'cal': cal, 'det': det, 'src': src, 'status': status, 'dests': DESTS, 'tp_ow': tp['ow'], 'tp_rt': tp['rt'],
           'prev_run_at': prev.get('run_at'),
