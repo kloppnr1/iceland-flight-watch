@@ -16,7 +16,7 @@ Public page: https://fly.strømsparer.dk (Hetzner server 89.167.101.11, Caddy, `
 Push to `main`. The server pulls the repo every 5 minutes (`flight-watch-deploy.timer` → `/opt/flight-watch/autodeploy.sh`, read-only GitHub deploy key `/root/.ssh/flight_watch_deploy`) and installs changed scripts and the page by itself. New systemd units or Caddy changes still need SSH (`flight-watch.caddy` now has `encode zstd gzip`: copy it to the server's Caddy config and `systemctl reload caddy`) (deploy key in `Downloads\sport-tv-deploy` on Martin's PC).
 
 ## Open items (16 Nov 2026)
-- **Upload token:** it stands in plain text in the three cloud task instructions. Replace it: new `UPLOAD_TOKEN` in `/opt/flight-watch/.env` + `systemctl restart flight-watch-api`, add it as a network secret for `fly.stromsparer.dk` (header `X-Upload-Token`) in the task environment, then put a dummy value in the task instructions.
+- **Upload token:** replaced 16 Nov. The token is a network secret for `fly.stromsparer.dk` (header `X-Upload-Token`) in the Default cloud environment, and the tasks run with the placeholder `UPLOAD_TOKEN=proxy-injected`. To change it: new `UPLOAD_TOKEN` in `/opt/flight-watch/.env` + `systemctl restart flight-watch-api`, and the same value in the network secret. Left to do: the task "Flight watch – new airport" still has the old token in its instructions (only Martin can edit it, on its claude.ai page); replace the value with `proxy-injected`.
 - **Compression:** copy `flight-watch.caddy` to the server's Caddy config and `systemctl reload caddy`.
 - **`flight-watch.service`** is only on the server; copy it into the repo.
 - **Old archive files** in `data/runs/` from before the "only new prices" rule were left as they are.
