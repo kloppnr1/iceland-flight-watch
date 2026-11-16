@@ -5,7 +5,10 @@ then one number per day = cheapest one-way price in DKK / 10 (0 = no flight).
 
 Routes: the home airports to and from each destination on the page's list (data/dests.json, or DESTS=KEF,AGP).
 Routes the server has no Google prices for yet (a destination that was just added) go first, and with
-UPLOAD_TOKEN set their calendars are uploaded as soon as they are done, before the slow day-by-day pass.
+UPLOAD_TOKEN set their calendars are uploaded as soon as they are done.
+With UPLOAD_TOKEN set, all calendars are also uploaded when the calendar pass is done (about 1.5 hours), and each
+route again when its slow day-by-day search is done (about 25 minutes per route), so the page does not wait for
+the whole run.
 
 --new-only: only the routes with no Google prices on the server yet, calendars only (a few minutes),
 uploaded at once; prints "nothing new" and stops if there are none. For a destination that was just added.
@@ -42,7 +45,7 @@ def save_prog():
 save_prog()
 start, end = datetime.date.fromisoformat(prog['start']), datetime.date.fromisoformat(prog['end'])
 # The server answers on both names; cloud network settings only accept plain-letter names, so try that first.
-SITES = ['https://fly.stromsparer.dk', 'https://fly.xn--strmsparer-2cb.dk']
+SITES = [os.environ['SITE']] if os.environ.get('SITE') else ['https://fly.stromsparer.dk', 'https://fly.xn--strmsparer-2cb.dk']
 
 
 def pick_site():
@@ -90,25 +93,67 @@ if NEW_ONLY:
     routes = new
 
 
-def quick_upload():
-    """Send the calendars of the new routes now (merge: the server keeps all other files)."""
-    if not new or not os.environ.get('UPLOAD_TOKEN'):
-        return
-    files = {}
-    for o, d in new:
-        for kind in ['any', 'direct']:
-            p = os.path.join(out, f'{o}-{d}-{kind}.txt')
-            if os.path.exists(p):
-                files[os.path.basename(p)] = open(p).read()
-    if not files:
+def send(files, label):
+    """Send files to the server now (merge: the server keeps all other files)."""
+    if not files or not os.environ.get('UPLOAD_TOKEN'):
         return
     req = urllib.request.Request(SITE + '/api/cal', data=json.dumps({'files': files, 'merge': True}).encode(),
                                  headers={'Content-Type': 'application/json', 'X-Upload-Token': os.environ['UPLOAD_TOKEN'],
                                           'User-Agent': 'flight-watch-upload'}, method='POST')
     try:
-        print('quick upload of new routes:', urllib.request.urlopen(req, timeout=120).read().decode(), flush=True)
+        print(label + ':', urllib.request.urlopen(req, timeout=120).read().decode(), flush=True)
     except Exception as e:
-        print('quick upload failed', e, flush=True)
+        print(label, 'failed', e, flush=True)
+
+
+def route_files(o, d, details=False):
+    names = [f'{o}-{d}-any.txt', f'{o}-{d}-direct.txt'] + ([f'{o}-{d}-details.json'] if details else [])
+    return {n: open(os.path.join(out, n)).read() for n in names if os.path.exists(os.path.join(out, n))}
+
+
+def quick_upload():
+    """Send the calendars of the new routes as soon as they are fetched."""
+    files = {}
+    for o, d in new:
+        files.update(route_files(o, d))
+    send(files, 'quick upload of new routes')
+
+
+def cal_text(prices):
+    ks = sorted(prices)
+    d0 = datetime.date.fromisoformat(ks[0])
+    n = (datetime.date.fromisoformat(ks[-1]) - d0).days + 1
+    return ks[0] + '\n' + ' '.join(str(prices.get(str(d0 + datetime.timedelta(days=i)), 0)) for i in range(n)) + '\n'
+
+
+def calendars_upload():
+    """Send all calendars when the calendar pass is done, hours before the day-by-day pass ends.
+    Routes the server already has day-by-day prices for keep those on the days the calendar search skipped."""
+    files = {}
+    for o, d in routes:
+        filled = (latest.get('status', {}).get(f'{o}-{d}') or {}).get('times')
+        for kind in ['any', 'direct']:
+            prices = read_cal(o, d, kind)
+            if not prices:
+                continue
+            old = (latest.get('cal', {}).get(f'{o}-{d}') or {}).get(kind) if filled else None
+            if old:
+                s0 = datetime.date.fromisoformat(old['start'])
+                for i, v in enumerate(old['p']):
+                    day = str(s0 + datetime.timedelta(days=i))
+                    if v and day >= str(start) and day not in prices:
+                        prices[day] = round(v / 10)
+            files[f'{o}-{d}-{kind}.txt'] = cal_text(prices)
+    send(files, 'upload of calendars')
+
+
+def read_cal(o, d, kind):
+    p = os.path.join(out, f'{o}-{d}-{kind}.txt')
+    if not os.path.exists(p):
+        return {}
+    lines = open(p).read().split('\n')
+    s0 = datetime.date.fromisoformat(lines[0].strip())
+    return {str(s0 + datetime.timedelta(days=i)): int(v) for i, v in enumerate(' '.join(lines[1:]).split()) if int(v)}
 
 
 for i_route, (o, d) in enumerate(routes):
@@ -141,12 +186,10 @@ for i_route, (o, d) in enumerate(routes):
             prog['cal_done'].append(f'{o}-{d}-{kind}'); save_prog()
             continue
         ks = sorted(prices)
-        d0 = datetime.date.fromisoformat(ks[0])
-        n = (datetime.date.fromisoformat(ks[-1]) - d0).days + 1
-        vals = [prices.get(str(d0 + datetime.timedelta(days=i)), 0) for i in range(n)]
         with open(os.path.join(out, f'{o}-{d}-{kind}.txt'), 'w') as f:
-            f.write(ks[0] + '\n' + ' '.join(map(str, vals)) + '\n')
-        print(o, d, kind, ks[0], n, 'days', sum(1 for v in vals if v), 'priced')
+            f.write(cal_text(prices))
+        print(o, d, kind, ks[0], (datetime.date.fromisoformat(ks[-1]) - datetime.date.fromisoformat(ks[0])).days + 1,
+              'days', len(prices), 'priced')
         prog['cal_done'].append(f'{o}-{d}-{kind}'); save_prog()
 if len(new) == len(routes) and not prog.get('quick_sent'):
     quick_upload(); prog['quick_sent'] = True; save_prog()
@@ -154,6 +197,9 @@ if len(new) == len(routes) and not prog.get('quick_sent'):
 if NEW_ONLY:
     print('new routes done')
     sys.exit(0)
+
+if not prog.get('cal_sent'):
+    calendars_upload(); prog['cal_sent'] = True; save_prog()
 
 # ---- Fill gaps day by day for the smaller airports ----
 # fli's calendar search skips many days on thin routes (Billund, Aalborg, Hamburg),
@@ -195,27 +241,7 @@ def day_search(args):
     return day, None, None
 
 
-def write(o, d, kind, prices):
-    if not prices:
-        return
-    ks = sorted(prices)
-    d0 = datetime.date.fromisoformat(ks[0])
-    n = (datetime.date.fromisoformat(ks[-1]) - d0).days + 1
-    vals = [prices.get(str(d0 + datetime.timedelta(days=i)), 0) for i in range(n)]
-    with open(os.path.join(out, f'{o}-{d}-{kind}.txt'), 'w') as f:
-        f.write(ks[0] + '\n' + ' '.join(map(str, vals)) + '\n')
-
-
 days = [str(start + datetime.timedelta(days=i)) for i in range((end - start).days + 1)]
-
-
-def read_cal(o, d, kind):
-    p = os.path.join(out, f'{o}-{d}-{kind}.txt')
-    if not os.path.exists(p):
-        return {}
-    lines = open(p).read().split('\n')
-    s0 = datetime.date.fromisoformat(lines[0].strip())
-    return {str(s0 + datetime.timedelta(days=i)): int(v) for i, v in enumerate(' '.join(lines[1:]).split()) if int(v)}
 
 
 for o, d in routes:
@@ -233,11 +259,13 @@ for o, d in routes:
             if kind in v:
                 prices[day] = round(v[kind]['p'] / 10)
         if prices:
-            write(o, d, kind, prices)
+            with open(os.path.join(out, f'{o}-{d}-{kind}.txt'), 'w') as f:
+                f.write(cal_text(prices))
     with open(os.path.join(out, f'{o}-{d}-details.json'), 'w') as f:
         json.dump(det, f, separators=(',', ':'))
     print(o, d, 'day by day:', len(det), 'days with flights,', sum(1 for v in det.values() if 'direct' in v), 'direct,',
           failed, 'empty/failed,', int(time.time() - t0), 's', flush=True)
+    send(route_files(o, d, details=True), f'upload of {o}-{d}')
     prog['day_done'].append(f'{o}-{d}'); save_prog()
 
 # Only replace the old calendars if this run got most routes (a Google rate limit can make a run fail)
