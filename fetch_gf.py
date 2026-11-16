@@ -7,9 +7,11 @@ Routes: the home airports to and from each destination on the page's list (data/
 Routes the server has no Google prices for yet (a destination that was just added) go first, and with
 UPLOAD_TOKEN set their calendars are uploaded as soon as they are done, before the slow day-by-day pass.
 
-All calendars are uploaded as soon as the calendar pass is done (merge: the server keeps the rest).
-Then the day-by-day pass (flight times, days the calendar missed) runs for the next GF_DAY_DAYS days
-(default 120) until GF_MINUTES (default 90) have passed, routes with the oldest flight times first,
+Time limit GF_MINUTES (default 90): the calendar pass goes route by route (new routes, then the ones
+whose calendar on the server is oldest), uploads every 5 routes (merge: the server keeps the rest) and
+stops when the time is up; the routes it did not reach keep their earlier calendars until a later run.
+Then, with the time that is left, the day-by-day pass (flight times, days the calendar missed) runs for the next GF_DAY_DAYS days
+(default 120), routes with the oldest flight times first,
 and uploads each route when it is done. Routes it does not reach keep their earlier flight times and get
 them on a later run.
 
@@ -86,7 +88,8 @@ latest = site_json('/data/latest.json') or {}
 have = {r for r in latest.get('cal', {}) if latest.get('src', {}).get(r) != 'tp'}
 if latest:
     new = [r for r in routes if f'{r[0]}-{r[1]}' not in have]
-    routes = new + [r for r in routes if r not in new]
+    st = latest.get('status', {})
+    routes = new + sorted([r for r in routes if r not in new], key=lambda r: st.get(f'{r[0]}-{r[1]}', {}).get('at') or '')
 else:
     new = []
 det_srv = latest.get('det', {})  # flight times/prices per day the server already has
@@ -129,9 +132,22 @@ def quick_upload():
     send(new, 'quick upload of new routes:')
 
 
+def over(extra=0):
+    return time.time() - T0 > MINUTES * 60 + extra
+
+
+unsent = []
 for i_route, (o, d) in enumerate(routes):
     if i_route == len(new) and not prog.get('quick_sent'):
         quick_upload(); prog['quick_sent'] = True; save_prog()
+    if not NEW_ONLY and over():
+        left = [f'{a}-{b}' for a, b in routes[i_route:]]
+        print(f'time limit ({MINUTES:.0f} min) reached in the calendar pass; {len(left)} routes keep their earlier calendars:', left, flush=True)
+        break
+    if not NEW_ONLY and i_route >= len(new):
+        unsent.append((o, d))
+        if len(unsent) > 5:
+            send(unsent[:-1], 'calendars sent:'); unsent = unsent[-1:]
     for kind, stops in [('any', 'ANY'), ('direct', '0')]:
         if f'{o}-{d}-{kind}' in prog['cal_done']:
             continue
@@ -152,8 +168,10 @@ for i_route, (o, d) in enumerate(routes):
                 if x.get('price'):
                     prices[x['departure_date']] = round(x['price'] / 10)
         else:
-            print('fli failed', o, d, kind, (r.stderr or r.stdout)[:200], flush=True)
-        time.sleep(5)
+            print('fli failed', o, d, kind, (r.stderr or r.stdout)[:200], '- the server keeps its earlier calendar', flush=True)
+            prog['cal_done'].append(f'{o}-{d}-{kind}'); save_prog()
+            continue
+        time.sleep(float(os.environ.get("GF_PAUSE", 5)))
         # days the calendar search skipped: use the price from the server's last day-by-day search
         for day, v in det_srv.get(f'{o}-{d}', {}).items():
             if kind in v and day not in prices and str(start) <= day <= str(end):
@@ -176,8 +194,7 @@ if len(new) == len(routes) and not prog.get('quick_sent'):
 if NEW_ONLY:
     print('new routes done')
     sys.exit(0)
-if not prog.get('cal_sent'):
-    send(routes, 'calendars sent:'); prog['cal_sent'] = True; save_prog()
+send(unsent, 'calendars sent:')
 
 # ---- Fill gaps day by day for the smaller airports ----
 # fli's calendar search skips many days on thin routes (Billund, Aalborg, Hamburg),
@@ -201,6 +218,8 @@ def pick(f):
 def day_search(args):
     o, d, day = args
     for attempt in range(4):
+        if over(15 * 60):
+            return day, 'stop', None  # well past the time limit: give up this route
         r = subprocess.run([FLI, 'flights', o, d, day, '--stops', 'ANY', '--currency', 'DKK', '--format', 'json'],
                            capture_output=True, text=True, timeout=120)
         try:
@@ -235,8 +254,13 @@ days = [str(start + datetime.timedelta(days=i)) for i in range(min(DAY_DAYS, (en
 
 def read_cal(o, d, kind):
     p = os.path.join(out, f'{o}-{d}-{kind}.txt')
-    if not os.path.exists(p):
-        return {}
+    if not os.path.exists(p):  # no calendar this run (search failed): start from the server's
+        c = latest.get('cal', {}).get(f'{o}-{d}', {}).get(kind) if latest.get('src', {}).get(f'{o}-{d}') != 'tp' else None
+        if not c:
+            return {}
+        s0 = datetime.date.fromisoformat(c['start'])
+        return {str(s0 + datetime.timedelta(days=i)): round(v / 10) for i, v in enumerate(c['p'])  # server keeps DKK, files DKK / 10
+                if v and str(start) <= str(s0 + datetime.timedelta(days=i)) <= str(end)}
     lines = open(p).read().split('\n')
     s0 = datetime.date.fromisoformat(lines[0].strip())
     return {str(s0 + datetime.timedelta(days=i)): int(v) for i, v in enumerate(' '.join(lines[1:]).split()) if int(v)}
@@ -251,13 +275,16 @@ day_routes = sorted(routes, key=times_age)
 for o, d in day_routes:
     if f'{o}-{d}' in prog['day_done']:
         continue
-    if time.time() - T0 > MINUTES * 60:
+    if over():
         left = [f'{a}-{b}' for a, b in day_routes if f'{a}-{b}' not in prog['day_done']]
         print(f'time limit ({MINUTES:.0f} min) reached; flight times for {len(left)} routes left for the next runs:', left, flush=True)
         break
     t0 = time.time()
     with ThreadPoolExecutor(3) as ex:
         res = list(ex.map(day_search, [(o, d, day) for day in days]))
+    if any(a == 'stop' for _, a, _ in res):
+        print(o, d, 'day by day stopped at the time limit; left for the next runs', flush=True)
+        break
     det = {day: {k: v for k, v in (('any', a), ('direct', x)) if v} for day, a, x in res if a or x}
     failed = sum(1 for _, a, x in res if a is None and x is None)
     # prices: day-by-day result, with the calendar price as fallback for days the day search missed
@@ -277,17 +304,13 @@ for o, d in day_routes:
     prog['day_done'].append(f'{o}-{d}'); save_prog()
     send([(o, d)], f'{o}-{d} sent:', details=True)
 
-# Only replace the old calendars if this run got most routes (a Google rate limit can make a run fail)
-got = glob.glob(os.path.join(out, '*-any.txt'))
-if len(got) >= min(6, len(routes)):
-    os.makedirs(final, exist_ok=True)
-    for f in glob.glob(os.path.join(final, '*.txt')):
-        os.remove(f)
-    for f in glob.glob(os.path.join(final, '*.json')):
-        os.remove(f)
-    os.remove(prog_path)  # finished: next run starts fresh
-    for f in glob.glob(os.path.join(out, '*.txt')) + glob.glob(os.path.join(out, '*-details.json')):
-        os.replace(f, os.path.join(final, os.path.basename(f)))
-    print('calendars updated')
-else:
-    print('too few routes this time, keeping the previous calendars')
+# Everything was uploaded as a merge already; cal/ holds this run's files for upload.py.
+os.makedirs(final, exist_ok=True)
+for f in glob.glob(os.path.join(final, '*.txt')):
+    os.remove(f)
+for f in glob.glob(os.path.join(final, '*.json')):
+    os.remove(f)
+os.remove(prog_path)  # finished: next run starts fresh
+for f in glob.glob(os.path.join(out, '*.txt')) + glob.glob(os.path.join(out, '*-details.json')):
+    os.replace(f, os.path.join(final, os.path.basename(f)))
+print('calendars updated')
