@@ -326,9 +326,9 @@ function more(inner){return `<details class="more" id="more" ${st.open?'open':''
 function drawFilters(){
   let h='';
   if(view==='trips'){
-    h+=`<div class="bar">${seg('type',[['rt','Round trip'],['ow','One way']],st.type,'Trip type')}${directSw()}${bagSw()}${st.type==='rt'?`<label class="sw"><input type="checkbox" id="mixSw" ${st.mix?'checked':''}>Home to another airport is fine</label>`:''}</div>${bagNote()}`;
+    h+=`<div class="bar">${seg('type',[['rt','Round trip'],['ow','One way']],st.type,'Trip type')}${directSw()}${bagSw()}</div>${bagNote()}`;
     if(st.type==='rt'){
-      h+=more((st.mix?chips('out','Fly out from',APTS,st.out)+chips('home','Fly home to',APTS,st.home):chips('out','Fly from (and home to the same airport)',APTS,st.out))+
+      h+=more(chips('out','Fly out from',APTS,st.out)+`<div class="f"><span class="t">Fly home to</span>${seg('mix',[['0','Same airport'],['1','Pick airports']],st.mix?'1':'0','Fly home to')}${st.mix?`<div class="chips" data-set="home" style="margin-top:8px">${APTS.map(v=>`<label><input type="checkbox" value="${v}" ${st.home.has(v)?'checked':''}><span>${v}</span></label>`).join('')}</div>`:''}</div>`+
         `<div class="f"><span class="t">Stay</span>${seg('unit',[['m','Months'],['d','Days']],st.unit,'Stay in months or days')}${st.unit==='d'
           ?`<div class="pair" style="margin-top:8px"><input type="number" inputmode="numeric" min="1" max="365" step="1" id="minD" value="${st.minD}" aria-label="Shortest stay in days"><span>to</span><input type="number" inputmode="numeric" min="1" max="365" step="1" id="maxD" value="${st.maxD}" aria-label="Longest stay in days"></div>`
           :`<div class="pair" style="margin-top:8px"><input type="number" inputmode="decimal" min="0" max="11" step="0.5" id="minM" value="${st.minM}" aria-label="Shortest stay in months"><span>to</span><input type="number" inputmode="decimal" min="0" max="11" step="0.5" id="maxM" value="${st.maxM}" aria-label="Longest stay in months"></div>`}</div>`+
@@ -369,6 +369,7 @@ function drawFilters(){
       if(i.value==='d'){st.minD=Math.round(+st.minM*30.4)||1;st.maxD=Math.round(+st.maxM*30.4)||365;}
       else{st.minM=Math.round(+st.minD/30.4*2)/2;st.maxM=Math.max(.5,Math.round(+st.maxD/30.4*2)/2);}
       st.unit=i.value;lsSet('ifw_stay_unit',st.unit);drawFilters();render();return;}
+    if(i.name==='mix'){st.mix=i.value==='1';lsSet('ifw_rt_mix',i.value);st.limit=40;drawFilters();render();return;}
     st[i.name]=i.value;if(i.name==='anyType')lsSet('ifw_any_type',i.value);if(i.name==='type'||i.name==='owDir'||i.name==='anyType'){st.limit=40;drawFilters();render()}else upd()});
   ['minM','maxM','minD','maxD','from','to','maxp'].forEach(id=>{const e=$(id);if(e)e.oninput=()=>{st[id]=e.value;upd()}});
   ['anyMin','anyMax'].forEach(id=>{const e=$(id);if(e)e.oninput=()=>{st[id]=e.value;lsSet('ifw_'+id.replace('any','any_').toLowerCase(),e.value);upd()}});
@@ -376,7 +377,6 @@ function drawFilters(){
   const bs=$('bagSw');if(bs)bs.onchange=()=>{st.bag=bs.checked;lsSet('ifw_bag',st.bag?'1':'0');drawFilters();render()};
   const as=$('anySort');if(as)as.onchange=()=>{st.anySort=as.value;lsSet('ifw_any_sort',as.value);st.limit=40;render()};
   const ax=$('anyMaxp');if(ax)ax.oninput=()=>{st.anyMaxp=ax.value;st.limit=40;render()};
-  const mx=$('mixSw');if(mx)mx.onchange=()=>{st.mix=mx.checked;lsSet('ifw_rt_mix',st.mix?'1':'0');st.limit=40;drawFilters();render()};
   const am=$('anyMix');if(am)am.onchange=()=>{st.anyMix=am.checked;lsSet('ifw_any_mix',st.anyMix?'1':'0');drawFilters();render()};
   const cd=$('calDirect');if(cd)cd.onchange=()=>{st.kind=cd.checked?'direct':'any';render()};
   const rs=$('route');if(rs)rs.onchange=()=>{st.route=rs.value;drawFilters();render()};
