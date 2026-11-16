@@ -15,7 +15,7 @@ now = datetime.datetime.now(datetime.timezone.utc)
 run_at = now.isoformat(timespec='seconds')
 today = datetime.date.today()
 APP = os.path.dirname(os.path.abspath(__file__))
-HOME = ['CPH', 'BLL', 'AAL', 'HAM']
+HOME = ['CPH', 'BLL', 'AAR', 'AAL', 'HAM']
 try:
     DESTS = json.load(open(os.path.join(APP, 'dests.json'))) or []
 except Exception:
@@ -96,7 +96,7 @@ tp['rt'] = [x for x in tp['rt'] if x['out'] >= str(today)]
 
 # ---- Keflavik flight board (cancellations / delays), only while Keflavík is a destination ----
 board = load('board.json', [])
-CITY = {'Copenhagen': 'CPH', 'Billund': 'BLL', 'Aalborg': 'AAL', 'Hamburg': 'HAM'}
+CITY = {'Copenhagen': 'CPH', 'Billund': 'BLL', 'Aarhus': 'AAR', 'Aalborg': 'AAL', 'Hamburg': 'HAM'}
 try:
     if 'KEF' not in CODES:
         raise RuntimeError('Keflavík is not a destination, board not read')

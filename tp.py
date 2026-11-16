@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 APP = os.path.dirname(os.path.abspath(__file__))
 T = os.environ['TP_TOKEN']
-DK = ['CPH', 'BLL', 'AAL', 'HAM']
+DK = ['CPH', 'BLL', 'AAR', 'AAL', 'HAM']
 API = 'https://api.travelpayouts.com/aviasales/v3/'
 
 

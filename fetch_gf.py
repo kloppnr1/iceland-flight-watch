@@ -56,7 +56,7 @@ def pick_site():
 
 
 SITE = pick_site()
-HOME = ['CPH', 'BLL', 'AAL', 'HAM']
+HOME = ['CPH', 'BLL', 'AAR', 'AAL', 'HAM']
 
 
 def site_json(path):

@@ -6,7 +6,7 @@ Each price check adds the cheapest matching round trip to the watch's history (d
 """
 import json, os, datetime
 
-APTS = ['CPH', 'BLL', 'AAL', 'HAM']
+APTS = ['CPH', 'BLL', 'AAR', 'AAL', 'HAM']
 
 
 def series(cal, route, kind):
