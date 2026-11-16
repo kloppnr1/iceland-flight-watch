@@ -119,6 +119,8 @@ select,input[type=number],input[type=date],input[type=text],input[type=password]
 .f select{max-width:340px}
 
 /* results */
+.srt{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted);font-weight:500}.srt select{width:auto;min-height:40px;padding:6px 10px;font-weight:600}
+.why{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;font-size:13px;color:var(--muted)}
 .lead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:0 0 10px;color:var(--muted);font-size:13px;flex-wrap:wrap}
 .list{display:grid;gap:10px}
 @media (min-width:900px){.list.two{grid-template-columns:1fr 1fr}}
@@ -295,7 +297,7 @@ const EXT='<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2h6v6M10 2 3 
 const lnk=(href,label,cls='')=>`<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener">${label}${EXT}</a>`;
 let L=null,CH=[],BOARD=[],WATCH=[],BAGS=null,PAT=null,view='trips';
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}};const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
-const st={dest:lsGet('ifw_dest','KEF'),bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),anyFrom:new Set(ANY_FROM),anyType:lsGet('ifw_any_type','ow'),anyMix:lsGet('ifw_any_mix','0')==='1',anyMin:lsGet('ifw_any_min','3'),anyMax:lsGet('ifw_any_max','7'),minM:1,maxM:6,unit:lsGet('ifw_stay_unit','m'),minD:30,maxD:182,stops:'direct',from:'',to:'',maxp:'',
+const st={dest:lsGet('ifw_dest','KEF'),bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),anyFrom:new Set(ANY_FROM),anyType:lsGet('ifw_any_type','ow'),anyMix:lsGet('ifw_any_mix','0')==='1',anyMin:lsGet('ifw_any_min','3'),anyMax:lsGet('ifw_any_max','7'),anySort:lsGet('ifw_any_sort','price'),anyMaxp:'',minM:1,maxM:6,unit:lsGet('ifw_stay_unit','m'),minD:30,maxD:182,stops:'direct',from:'',to:'',maxp:'',
   route:'ALL-'+lsGet('ifw_dest','KEF'),kind:'direct',chDir:'both',chWhat:'drops',limit:40,open:matchMedia('(min-width:900px)').matches};
 
 function series(route,kind,prev){const src=prev?L.prev_cal:L.cal;const c=src?.[route]?.[kind];const m=new Map();if(!c)return m;let d=c.start;c.p.forEach(v=>{if(v)m.set(d,v);d=add(d,1)});return m;}
@@ -350,6 +352,7 @@ function drawFilters(){
     h+=`<div class="bar">${directSw()}</div>`;
   } else if(view==='any'){
     h+=`<div class="bar">${seg('anyType',[['ow','One way'],['rt','Round trip']],st.anyType,'Trip type')}${st.anyType==='rt'?`<div class="pair" style="max-width:260px"><input type="number" inputmode="numeric" min="1" max="120" step="1" id="anyMin" value="${st.anyMin}" aria-label="Fewest days away"><span>to</span><input type="number" inputmode="numeric" min="1" max="120" step="1" id="anyMax" value="${st.anyMax}" aria-label="Most days away"><span>days</span></div><label class="sw"><input type="checkbox" id="anyMix" ${st.anyMix?'checked':''}>Home to another airport is fine</label>`:''}</div>`;
+    h+=`<div class="bar"><label class="srt">Sort by <select id="anySort">${[['price','Lowest price'],['save','Best deal'],['soon','Leaving soonest'],['az','Country A–Z']].map(([v,l])=>`<option value="${v}" ${v===st.anySort?'selected':''}>${l}</option>`).join('')}</select></label><input type="number" inputmode="numeric" id="anyMaxp" value="${st.anyMaxp}" placeholder="Max price (kr)" aria-label="Max price in kr" style="max-width:170px"></div>`;
     h+=chips('anyFrom',st.anyType!=='rt'?'Fly from':st.anyMix?'Fly from, and home to any of these':'Fly from (and home to the same airport)',ANY_FROM,st.anyFrom);
   } else if(view==='changes'){
     h+=`<div class="bar">${seg('chWhat',[['drops','Drops'],['rises','Rises'],['all','All']],st.chWhat,'Show')}</div>`;
@@ -371,6 +374,8 @@ function drawFilters(){
   ['anyMin','anyMax'].forEach(id=>{const e=$(id);if(e)e.oninput=()=>{st[id]=e.value;lsSet('ifw_'+id.replace('any','any_').toLowerCase(),e.value);upd()}});
   const ds=$('directSw');if(ds)ds.onchange=()=>{st.stops=ds.checked?'direct':'any';upd()};
   const bs=$('bagSw');if(bs)bs.onchange=()=>{st.bag=bs.checked;lsSet('ifw_bag',st.bag?'1':'0');drawFilters();render()};
+  const as=$('anySort');if(as)as.onchange=()=>{st.anySort=as.value;lsSet('ifw_any_sort',as.value);st.limit=40;render()};
+  const ax=$('anyMaxp');if(ax)ax.oninput=()=>{st.anyMaxp=ax.value;st.limit=40;render()};
   const am=$('anyMix');if(am)am.onchange=()=>{st.anyMix=am.checked;lsSet('ifw_any_mix',st.anyMix?'1':'0');drawFilters();render()};
   const cd=$('calDirect');if(cd)cd.onchange=()=>{st.kind=cd.checked?'direct':'any';render()};
   const rs=$('route');if(rs)rs.onchange=()=>{st.route=rs.value;drawFilters();render()};
@@ -514,6 +519,7 @@ async function renderAny(){
     (al||[]).forEach(a=>ANYAP[a[0]]=a);
     if(view!=='any')return;}
   const ap=ANYAP,t=iso(new Date()),best={},rt=st.anyType==='rt';
+  const C=ANY.cal||{},T=days('2000-01-01',t);
   const skip=(o,d)=>!st.anyFrom.has(o)||ANY_FROM.includes(d)&&st.anyFrom.has(d);  // e.g. CPH→KEF when KEF is a home airport too
   if(!rt){
     for(const [r,[date,p]] of Object.entries(ANY.routes||{})){const [o,d]=r.split('-');
@@ -523,7 +529,6 @@ async function renderAny(){
     // round trip = cheapest one-way out + cheapest one-way home, n days later; home to the same airport, or with
     // "another airport is fine" to any chosen one on the same side (Denmark/Hamburg, or Iceland)
     let lo=Math.max(1,Math.round(+st.anyMin)||1),hi=Math.max(lo,Math.round(+st.anyMax)||lo);hi=Math.min(hi,lo+120);
-    const C=ANY.cal||{},T=days('2000-01-01',t);
     for(const r of Object.keys(C)){const [o,d]=r.split('-');if(skip(o,d))continue;
       const A=C[r],a0=days('2000-01-01',A.start);
       for(const h of st.anyMix?ANY_FROM.filter(x=>st.anyFrom.has(x)&&(x==='KEF')===(o==='KEF')):[o]){const B=C[d+'-'+h];if(!B)continue;
@@ -533,15 +538,34 @@ async function renderAny(){
           for(let n=lo;n<=hi;n++){const j=a0+i+n-b0;if(j<0)continue;if(j>=B.p.length)break;const p2=B.p[j];if(!p2)continue;
             if(!best[d]||p1+p2<best[d].p)best[d]={o,h,date:add(A.start,i),back:add(A.start,i+n),n,p1,p2,p:p1+p2};}}}}
   }
-  const rows=Object.entries(best).sort((a,b)=>a[1].p-b[1].p);
+  // what matters besides the price: how it compares with the route's usual price, how many days have it, how soon it leaves
+  const fut=A=>A?A.p.slice(Math.max(0,T-days('2000-01-01',A.start))).filter(Boolean):[];
+  const med=A=>{const v=fut(A).sort((a,b)=>a-b);return v.length>=14?v[v.length>>1]:null};
+  for(const [d,b] of Object.entries(best)){const a=ap[d];b.city=a?a[2]||a[1]:d;b.country=a?a[3]:'';b.lead=days(t,b.date);
+    const m1=med(C[b.o+'-'+d]),m2=rt?med(C[d+'-'+b.h]):0;
+    if(m1&&(m2||!rt)){b.usual=m1+m2;b.save=Math.round(100*(1-b.p/b.usual));}
+    if(!rt&&C[b.o+'-'+d])b.near=fut(C[b.o+'-'+d]).filter(x=>x<=b.p*1.1).length-1;}
+  const mx=+st.anyMaxp||Infinity,byP=(a,b)=>a[1].p-b[1].p;
+  const band=v=>v==null?-99:Math.floor(v/10);  // price stays a priority: savings in steps of 10 %, departures week by week, cheapest first within each
+  const SORT={price:byP,save:(a,b)=>band(b[1].save)-band(a[1].save)||byP(a,b),soon:(a,b)=>Math.floor(a[1].lead/7)-Math.floor(b[1].lead/7)||byP(a,b),
+    az:(a,b)=>a[1].country.localeCompare(b[1].country)||byP(a,b)};
+  const rows=Object.entries(best).filter(x=>x[1].p<=mx).sort(SORT[st.anySort]||byP);
+  const inTxt=n=>n<=0?'today':n===1?'tomorrow':n<14?`in ${n} days`:n<60?`in ${Math.round(n/7)} weeks`:`in ${Math.round(n/30.4)} months`;
+  const why=b=>{const x=[];
+    if(b.save>=15)x.push(`<span class="tag direct">${b.save}% under usual</span>`);
+    else if(b.save<=-15)x.push(`<span class="tag">${-b.save}% over usual</span>`);
+    if(b.usual)x.push(`usually about ${KR(b.usual)}`);
+    if(b.near!=null)x.push(b.near<=0?'only this day':b.near<3?`${b.near} other day${b.near===1?'':'s'} near this price`:`${b.near} other days near this price`);
+    x.push('leaves '+inTxt(b.lead));
+    return `<div class="why">${x.map((v,i)=>i&&!x[i-1].startsWith('<')?'<span>· '+v+'</span>':'<span>'+v+'</span>').join('')}</div>`};
   if(!rows.length){$('view').innerHTML=rt&&Object.keys(ANY.routes||{}).length&&!ANY.cal
     ?empty('No round trips yet.','Round trips need prices both ways; they show from the next anywhere scan.')
-    :empty(rt?'No round trips match.':'No anywhere prices yet.',rt?'Try more days or more airports.':'They are added while the anywhere scan runs.');return;}
+    :empty(rt?'No round trips match.':Object.keys(best).length?'Nothing under that price.':'No anywhere prices yet.',rt||Object.keys(best).length?'Try a higher max price, more days or more airports.':'They are added while the anywhere scan runs.');return;}
   const shown=rows.slice(0,st.limit);
   const gfR=(o,d,d1,d2)=>'https://www.google.com/travel/flights?hl=en&curr=DKK&q='+encodeURIComponent(`flights from ${o} to ${d} on ${d1} returning ${d2}`);
-  $('view').innerHTML=`<div class="lead"><span>${rows.length} destinations, ${rt?`cheapest round trip of ${st.anyMin===st.anyMax?esc(st.anyMin):esc(st.anyMin)+'–'+esc(st.anyMax)} days`:'cheapest one-way ticket'} in the next 6 months</span><span>Updated ${new Date(ANY.updated).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span></div><div class="list two">${shown.map(([d,b])=>{const a=ap[d],city=a?a[2]||a[1]:d;
+  $('view').innerHTML=`<div class="lead"><span>${rows.length} destinations, ${rt?`cheapest round trip of ${st.anyMin===st.anyMax?esc(st.anyMin):esc(st.anyMin)+'–'+esc(st.anyMax)} days`:'cheapest one-way ticket'} in the next 6 months${st.anySort==='save'?', best deals first, cheapest first among similar deals':st.anySort==='soon'?', week by week, cheapest first in each week':st.anySort==='az'?', by country':''}</span><span>Updated ${new Date(ANY.updated).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span></div><div class="list two">${shown.map(([d,b])=>{const a=ap[d],city=b.city;
     return `<article class="card"><div class="top"><div><div class="head">${esc(city)} (${esc(d)})</div><div class="sub">${a?esc(a[3])+' · ':''}${rt?`${esc(nm(b.o))}${b.h!==b.o?', home to '+esc(nm(b.h)):''}, ${fd(b.date)} → ${fd(b.back)}, ${b.n} day${b.n===1?'':'s'}`:`from ${esc(nm(b.o))}, ${fd(b.date)}`}</div></div><div class="pr"><div class="price">${kr(b.p)}<small>kr</small></div></div></div>
-    ${rt?`<div class="sub" style="margin-top:6px">Out ${KR(b.p1)} + home ${KR(b.p2)}, two one-way tickets</div>`:''}
+    ${rt?`<div class="sub" style="margin-top:6px">Out ${KR(b.p1)} + home ${KR(b.p2)}, two one-way tickets</div>`:''}${why(b)}
     <div class="links">${rt?lnk(gf(b.o,d,b.date,false),'Out')+lnk(gf(d,b.h,b.back,false),'Home')+(b.h===b.o?lnk(gfR(b.o,d,b.date,b.back),'As round trip'):''):lnk(gf(b.o,d,b.date,false),'Open in Google Flights')}</div></article>`}).join('')}</div>${moreBtn(shown.length,rows.length)}`;
   wireMore();
 }
