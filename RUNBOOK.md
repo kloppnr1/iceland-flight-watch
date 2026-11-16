@@ -14,3 +14,9 @@ Public page: https://fly.strømsparer.dk (Hetzner server 89.167.101.11, Caddy, `
 
 ## Deploy code changes
 Push to `main`. The server pulls the repo every 5 minutes (`flight-watch-deploy.timer` → `/opt/flight-watch/autodeploy.sh`, read-only GitHub deploy key `/root/.ssh/flight_watch_deploy`) and installs changed scripts and the page by itself. New systemd units or Caddy changes still need SSH (`flight-watch.caddy` now has `encode zstd gzip`: copy it to the server's Caddy config and `systemctl reload caddy`) (deploy key in `Downloads\sport-tv-deploy` on Martin's PC).
+
+## Open items (16 Nov 2026)
+- **Upload token:** it stands in plain text in the three cloud task instructions. Replace it: new `UPLOAD_TOKEN` in `/opt/flight-watch/.env` + `systemctl restart flight-watch-api`, add it as a network secret for `fly.stromsparer.dk` (header `X-Upload-Token`) in the task environment, then put a dummy value in the task instructions.
+- **Compression:** copy `flight-watch.caddy` to the server's Caddy config and `systemctl reload caddy`.
+- **`flight-watch.service`** is only on the server; copy it into the repo.
+- **Old archive files** in `data/runs/` from before the "only new prices" rule were left as they are.
