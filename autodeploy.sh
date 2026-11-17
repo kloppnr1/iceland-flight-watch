@@ -7,6 +7,9 @@ APP=/opt/flight-watch
 WEB=/srv/flight-watch
 export GIT_SSH_COMMAND="ssh -i /root/.ssh/flight_watch_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
 
+# server self-check (certificates, services, disk) -> data/health.json, read by the cloud health-check task
+[ -f "$APP/health.py" ] && timeout 60 python3 "$APP/health.py" "$WEB/data/health.json" >/dev/null 2>&1 || true
+
 if [ ! -d "$SRC/.git" ]; then
   git clone -q git@github.com:kloppnr1/iceland-flight-watch.git "$SRC"
 fi
@@ -23,7 +26,7 @@ if ! cmp -s autodeploy.sh "$APP/autodeploy.sh"; then
 fi
 
 changed_api=0
-for f in api.py watches.py build.py tp.py patterns.py run.sh; do
+for f in api.py watches.py build.py tp.py patterns.py run.sh health.py; do
   [ -f "$f" ] || continue
   if ! cmp -s "$f" "$APP/$f"; then
     cp "$f" "$APP/$f"
