@@ -5,6 +5,7 @@ for a chosen number of days, from these day-by-day one-way prices.
 
 Results are saved to a local file after every lookup, so a stopped run continues where it stopped
 (within 20 hours; after that a run starts over).
+The airports added on the page (data/dests.json) are always scanned too, first.
 With UPLOAD_TOKEN set they are also sent to the site (POST /api/anywhere) every 25 lookups, not only at the end.
 
 Usage: python3 anywhere.py [results.jsonl]           scan (and upload as it goes)
@@ -29,6 +30,22 @@ NBO ZNZ JNB CPT DAR MRU SEZ ADD ACC LOS DSS SID RAI
 SYD MEL AKL""".split()
 SITES = [os.environ['SITE']] if os.environ.get('SITE') else ['https://fly.stromsparer.dk', 'https://fly.xn--strmsparer-2cb.dk']
 TOKEN = os.environ.get('UPLOAD_TOKEN', '').strip()
+
+
+def followed():
+    """The airports added on the page ("to ..." picker): always part of the scan, first in line."""
+    for site in SITES:
+        try:
+            ds = json.load(urllib.request.urlopen(urllib.request.Request(site + '/data/dests.json', headers={'User-Agent': 'flight-watch-anywhere'}), timeout=20))
+            return [d['code'] for d in ds if isinstance(d, dict) and len(d.get('code', '')) == 3]
+        except Exception as e:
+            print('could not read the followed airports from', site, e, flush=True)
+    return []
+
+
+FOLLOWED = [] if UPLOAD_ONLY else followed()
+DEST = FOLLOWED + [d for d in DEST if d not in FOLLOWED]
+print('followed airports in the scan:', FOLLOWED, flush=True)
 
 # A results file older than 20 hours belongs to an earlier run: start over so prices are fresh.
 # The run's start day is kept with it, so a restart after midnight continues the same date windows.
