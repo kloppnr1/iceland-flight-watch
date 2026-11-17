@@ -53,7 +53,7 @@ def save_prog():
 save_prog()
 start, end = datetime.date.fromisoformat(prog['start']), datetime.date.fromisoformat(prog['end'])
 # The server answers on both names; cloud network settings only accept plain-letter names, so try that first.
-SITES = ['https://fly.stromsparer.dk', 'https://fly.xn--strmsparer-2cb.dk']
+SITES = [os.environ['SITE']] if os.environ.get('SITE') else ['https://fly.stromsparer.dk', 'https://fly.xn--strmsparer-2cb.dk']
 
 
 def pick_site():
