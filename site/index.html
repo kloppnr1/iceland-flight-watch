@@ -289,6 +289,9 @@ const followed=c=>!!destOf(c);
 const anyCodes=()=>{const s=new Set();for(const r of Object.keys(ANY?.cal||{})){const d=r.split('-')[1];if(!ANY_FROM.includes(d))s.add(d)}return [...s]};
 // a destination is one airport (code) or a whole country ('c:' + country, as on Anywhere): every airport there
 const isC=c=>String(c).startsWith('c:');
+// airports grouped by country, countries A–Z, airports A–Z inside each: [[country, [codes]], …]
+const byCountry=(cs,name)=>{const g={};for(const c of cs){const n=ANYAP[c]?.[3]||'Other';(g[n]=g[n]||[]).push(c)}
+  return Object.entries(g).sort((a,b)=>a[0]==='Other'?1:b[0]==='Other'?-1:a[0].localeCompare(b[0])).map(([n,l])=>[n,l.sort((a,b)=>name(a).localeCompare(name(b)))])};
 const allCodes=()=>[...new Set([...DESTS.map(d=>d.code),...anyCodes()])].filter(c=>!ANY_FROM.includes(c));
 const ctryCodes=n=>allCodes().filter(c=>ANYAP[c]?.[3]===n);
 const DCODES=()=>isC(DST())?ctryCodes(DST().slice(2)):[DST()];
@@ -538,7 +541,7 @@ function anyDestPick(){
   const ds=anyDests(),by=(a,b)=>anyDestName(a).localeCompare(anyDestName(b));
   const opt=k=>st.anyDest.includes(k)?'':`<option value="${esc(k)}">${esc(anyDestName(k))}</option>`;
   return `<div class="f" style="margin-top:12px"><span class="t">Fly to</span>${st.anyDest.length?`<div class="chips" id="anyDestSel" style="margin-bottom:8px">${st.anyDest.map(k=>`<label title="Remove"><input type="checkbox" value="${esc(k)}" checked><span>${esc(anyDestName(k))} ×</span></label>`).join('')}</div>`:''}
-   <select id="anyDestAdd" aria-label="Add a destination" style="max-width:320px"><option value="">${st.anyDest.length?'Add another…':'Anywhere – pick an airport…'}</option>${ds.length?`${ds.some(destOf)?`<optgroup label="Your airports">${ds.filter(destOf).sort(by).map(opt).join('')}</optgroup>`:''}<optgroup label="All airports">${ds.sort(by).map(opt).join('')}</optgroup>`:''}</select></div>`;
+   <select id="anyDestAdd" aria-label="Add a destination" style="max-width:320px"><option value="">${st.anyDest.length?'Add another…':'Anywhere – pick an airport…'}</option>${ds.length?`${ds.some(destOf)?`<optgroup label="Your airports">${ds.filter(destOf).sort(by).map(opt).join('')}</optgroup>`:''}${byCountry(ds,anyDestName).map(([n,l])=>`<optgroup label="${esc(n)}">${l.map(opt).join('')}</optgroup>`).join('')}`:''}</select></div>`;
 }
 const anyDestOk=d=>!st.anyDest.length||st.anyDest.includes(d);
 async function renderAny(){
@@ -775,9 +778,9 @@ function noData(){
 }
 function drawDest(){
   const o=(c,l)=>`<option value="${esc(c)}" ${c===DST()?'selected':''}>${esc(l)}</option>`;
-  const rest=anyCodes().filter(c=>!followed(c)).map(c=>[c,`${nm(c)} (${c})${ANYAP[c]?.[3]?', '+ANYAP[c][3]:''}`]).sort((a,b)=>a[1].localeCompare(b[1]));
+  const rest=byCountry(anyCodes().filter(c=>!followed(c)),nm);
   $('dest').innerHTML=`<optgroup label="Your airports">${DESTS.map(d=>o(d.code,d.name+(d.name!==d.code?` (${d.code})`:''))).join('')}</optgroup>`+
-    (rest.length?`<optgroup label="All airports">${rest.map(([c,l])=>o(c,l)).join('')}</optgroup>`:'')+'<option value="+">Airports and status…</option>';
+    rest.map(([n,l])=>`<optgroup label="${esc(n)}">${l.map(c=>o(c,`${nm(c)} (${c})`)).join('')}</optgroup>`).join('')+'<option value="+">Airports and status…</option>';
 }
 const navOn=()=>document.querySelectorAll('nav button').forEach(x=>{x.classList.toggle('on',x.dataset.v===view);if(x.dataset.v===view)x.scrollIntoView({block:'nearest',inline:'nearest'});});
 function setDest(c){
