@@ -10,6 +10,33 @@ export GIT_SSH_COMMAND="ssh -i /root/.ssh/flight_watch_deploy -o IdentitiesOnly=
 # server self-check (certificates, services, disk) -> data/health.json, read by the cloud health-check task
 [ -f "$APP/health.py" ] && timeout 60 python3 "$APP/health.py" "$WEB/data/health.json" >/dev/null 2>&1 || true
 
+# RSA certificates: some company networks (TLS inspection) cannot handle ECDSA and show
+# ERR_SSL_VERSION_OR_CIPHER_MISMATCH. Add the global option key_type rsa2048 to the server's Caddyfile if it is
+# missing (merged into an existing global block), validate, and restart Caddy with fresh certificates for the
+# flight-watch names (a reload would keep serving the cached ECDSA ones). Old certificates are kept in a backup.
+CF=/etc/caddy/Caddyfile
+if [ -f "$CF" ] && ! grep -q 'key_type rsa2048' "$CF"; then
+  cp "$CF" "$CF.bak-before-rsa"
+  if [ "$(grep -v '^\s*#' "$CF" | grep -v '^\s*$' | head -1 | tr -d '[:space:]')" = "{" ]; then
+    awk 'BEGIN{d=0} !d && /^[[:space:]]*\{[[:space:]]*$/ {print; print "\tkey_type rsa2048"; d=1; next} {print}' "$CF.bak-before-rsa" > "$CF"
+  else
+    { printf '{\n\tkey_type rsa2048\n}\n\n'; cat "$CF.bak-before-rsa"; } > "$CF"
+  fi
+  if caddy validate --config "$CF" --adapter caddyfile >/dev/null 2>&1; then
+    BK=/var/lib/caddy/ecdsa-backup-$(date +%Y%m%d%H%M); mkdir -p "$BK"
+    for d in /var/lib/caddy/.local/share/caddy/certificates/*/fly.stromsparer.dk /var/lib/caddy/.local/share/caddy/certificates/*/fly.xn--strmsparer-2cb.dk; do
+      [ -d "$d" ] && mv "$d" "$BK/$(basename "$(dirname "$d")")-$(basename "$d")"
+    done
+    systemctl restart caddy
+    echo "caddy: key_type rsa2048 added, restarted (old fly certificates in $BK)" > "$WEB/data/caddy-change.txt"
+  else
+    cp "$CF.bak-before-rsa" "$CF"
+    caddy validate --config "$CF.bak-before-rsa" --adapter caddyfile >/dev/null 2>&1 || true
+    echo "caddy: adding key_type rsa2048 did not validate; Caddyfile left as it was" > "$WEB/data/caddy-change.txt"
+  fi
+  chmod 644 "$WEB/data/caddy-change.txt"
+fi
+
 if [ ! -d "$SRC/.git" ]; then
   git clone -q git@github.com:kloppnr1/iceland-flight-watch.git "$SRC"
 fi

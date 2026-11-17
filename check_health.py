@@ -36,6 +36,8 @@ def health(h):
     for name, t in h.get('tls', {}).items():
         if not t.get('ok'):
             problems.append(f'HTTPS fails on {name}: {t.get("error")} (browsers show ERR_SSL_VERSION_OR_CIPHER_MISMATCH or a certificate error).')
+        elif t.get('key') and t['key'] != 'RSA':
+            problems.append(f'{name} serves an {t["key"]} certificate; company networks with HTTPS inspection may fail with ERR_SSL_VERSION_OR_CIPHER_MISMATCH (Caddy global option key_type rsa2048 missing?).')
         elif t.get('days_left', 99) < 14:
             problems.append(f'The certificate for {name} expires in {t["days_left"]} days and has not been renewed.')
     for unit, st in h.get('services', {}).items():

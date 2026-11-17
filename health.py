@@ -1,7 +1,7 @@
 """Server self-check, run by autodeploy.sh every 5 minutes (as root): writes /srv/flight-watch/data/health.json.
 
 - TLS: connects to each of the site's names on port 443 (as a browser would, via DNS) and checks that the
-  certificate is valid for that name, and how many days it has left. A name Caddy has no certificate for
+  certificate is valid for that name, how many days it has left, and its key type (RSA or ECDSA). A name Caddy has no certificate for
   shows the browser error ERR_SSL_VERSION_OR_CIPHER_MISMATCH; here it shows as an error.
 - Services: caddy and flight-watch-api active.
 - Disk: free space on /.
@@ -20,8 +20,11 @@ def tls(name):
         with socket.create_connection((name, 443), timeout=10) as s:
             with ctx.wrap_socket(s, server_hostname=name) as t:
                 c = t.getpeercert()
+                der = t.getpeercert(binary_form=True)
         exp = datetime.datetime.fromtimestamp(ssl.cert_time_to_seconds(c['notAfter']), datetime.timezone.utc)
-        return {'ok': True, 'days_left': (exp - now).days, 'expires': exp.isoformat(timespec='seconds')}
+        txt = subprocess.run(['openssl', 'x509', '-inform', 'DER', '-noout', '-text'], input=der, capture_output=True, timeout=10).stdout.decode()
+        key = 'RSA' if 'rsaEncryption' in txt else 'ECDSA' if 'id-ecPublicKey' in txt else 'unknown'
+        return {'ok': True, 'days_left': (exp - now).days, 'expires': exp.isoformat(timespec='seconds'), 'key': key}
     except Exception as e:
         return {'ok': False, 'error': f'{type(e).__name__}: {e}'[:300]}
 
