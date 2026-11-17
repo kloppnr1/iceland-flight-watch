@@ -15,7 +15,9 @@ if [ ! -d "$SRC/.git" ]; then
 fi
 cd "$SRC"
 git fetch -q origin main
-if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] && [ -f "$APP/.deployed" ]; then
+# done only when the deployed commit is this one (after a self-update the repo is already reset, so compare
+# with what was last deployed, not only with origin/main)
+if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] && [ "$(cat "$APP/.deployed" 2>/dev/null)" = "$(git rev-parse HEAD)" ]; then
   exit 0
 fi
 git reset -q --hard origin/main
