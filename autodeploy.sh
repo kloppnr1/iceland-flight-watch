@@ -15,14 +15,15 @@ export GIT_SSH_COMMAND="ssh -i /root/.ssh/flight_watch_deploy -o IdentitiesOnly=
 # missing (merged into an existing global block), validate, and restart Caddy with fresh certificates for the
 # flight-watch names (a reload would keep serving the cached ECDSA ones). Old certificates are kept in a backup.
 CF=/etc/caddy/Caddyfile
-if [ -f "$CF" ] && ! grep -q 'key_type rsa2048' "$CF"; then
+if [ -f "$CF" ] && ! grep -q 'key_type rsa2048' "$CF" && [ ! -f "$APP/.rsa-failed" ]; then
   cp "$CF" "$CF.bak-before-rsa"
   if [ "$(grep -v '^\s*#' "$CF" | grep -v '^\s*$' | head -1 | tr -d '[:space:]')" = "{" ]; then
     awk 'BEGIN{d=0} !d && /^[[:space:]]*\{[[:space:]]*$/ {print; print "\tkey_type rsa2048"; d=1; next} {print}' "$CF.bak-before-rsa" > "$CF"
   else
     { printf '{\n\tkey_type rsa2048\n}\n\n'; cat "$CF.bak-before-rsa"; } > "$CF"
   fi
-  if caddy validate --config "$CF" --adapter caddyfile >/dev/null 2>&1; then
+  # syntax check (adapt only parses), then a reload, which keeps the running config if the new one is bad
+  if err=$(caddy adapt --config "$CF" --adapter caddyfile 2>&1 >/dev/null) && err=$(systemctl reload caddy 2>&1); then
     BK=/var/lib/caddy/ecdsa-backup-$(date +%Y%m%d%H%M); mkdir -p "$BK"
     for d in /var/lib/caddy/.local/share/caddy/certificates/*/fly.stromsparer.dk /var/lib/caddy/.local/share/caddy/certificates/*/fly.xn--strmsparer-2cb.dk; do
       [ -d "$d" ] && mv "$d" "$BK/$(basename "$(dirname "$d")")-$(basename "$d")"
@@ -31,10 +32,40 @@ if [ -f "$CF" ] && ! grep -q 'key_type rsa2048' "$CF"; then
     echo "caddy: key_type rsa2048 added, restarted (old fly certificates in $BK)" > "$WEB/data/caddy-change.txt"
   else
     cp "$CF.bak-before-rsa" "$CF"
-    caddy validate --config "$CF.bak-before-rsa" --adapter caddyfile >/dev/null 2>&1 || true
-    echo "caddy: adding key_type rsa2048 did not validate; Caddyfile left as it was" > "$WEB/data/caddy-change.txt"
+    systemctl reload caddy >/dev/null 2>&1 || true
+    { echo "caddy: adding key_type rsa2048 failed; Caddyfile left as it was. Error:"; echo "$err" | tail -8; } > "$WEB/data/caddy-change.txt"
+    touch "$APP/.rsa-failed"  # do not retry every 5 minutes; remove this file to try again
   fi
   chmod 644 "$WEB/data/caddy-change.txt"
+fi
+
+# One time: re-issue every other ECDSA certificate on the server as RSA now, not at its next renewal.
+# A name that has no new certificate after 3 minutes (for example one no longer served here) gets its old one back.
+MARK="$APP/.rsa-all-done"
+if [ ! -f "$MARK" ] && grep -q 'key_type rsa2048' "$CF" 2>/dev/null; then
+  ST=/var/lib/caddy/.local/share/caddy/certificates
+  BK=/var/lib/caddy/ecdsa-backup-all-$(date +%Y%m%d%H%M); mkdir -p "$BK"
+  moved=""
+  for d in "$ST"/*/*/; do
+    d=${d%/}; n=$(basename "$d")
+    grep -q "EC PRIVATE KEY" "$d/$n.key" 2>/dev/null || continue
+    mv "$d" "$BK/$(basename "$(dirname "$d")")__$n"; moved="$moved $n"
+  done
+  bad=""
+  if [ -n "$moved" ]; then
+    systemctl restart caddy
+    sleep 180
+    for n in $moved; do
+      echo | timeout 15 openssl s_client -connect 127.0.0.1:443 -servername "$n" 2>/dev/null | grep -q "BEGIN CERTIFICATE" || bad="$bad $n"
+    done
+    if [ -n "$bad" ]; then
+      for n in $bad; do for b in "$BK"/*__"$n"; do iss=$(basename "$b"); iss=${iss%__*}; mkdir -p "$ST/$iss"; mv "$b" "$ST/$iss/$n"; done; done
+      systemctl restart caddy
+    fi
+  fi
+  echo "caddy: RSA for all: re-issued:${moved:- none}; old certificate put back:${bad:- none} (backup $BK)" >> "$WEB/data/caddy-change.txt"
+  chmod 644 "$WEB/data/caddy-change.txt"
+  touch "$MARK"
 fi
 
 if [ ! -d "$SRC/.git" ]; then
