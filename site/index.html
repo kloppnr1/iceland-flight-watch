@@ -309,8 +309,8 @@ const EXT='<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2h6v6M10 2 3 
 const lnk=(href,label,cls='')=>`<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener">${label}${EXT}</a>`;
 let L=null,CH=[],BOARD=[],WATCH=[],BAGS=null,PAT=null,view='trips';
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}};const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
-const st={dest:lsGet('ifw_dest','KEF'),bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),anyFrom:new Set(ANY_FROM),anyType:lsGet('ifw_any_type','ow'),mix:lsGet('ifw_rt_mix','1')==='1',anyMix:lsGet('ifw_any_mix','0')==='1',anyMin:lsGet('ifw_any_min','3'),anyMax:lsGet('ifw_any_max','7'),anySort:lsGet('ifw_any_sort','price'),anyDest:(()=>{try{const v=JSON.parse(lsGet('ifw_any_dest','[]'));return Array.isArray(v)?v.map(String):[]}catch(e){return []}})(),anyMaxp:'',minM:1,maxM:6,unit:lsGet('ifw_stay_unit','m'),minD:30,maxD:182,stops:'direct',from:'',to:'',maxp:'',
-  route:'ALL-'+lsGet('ifw_dest','KEF'),kind:'direct',chDir:'both',chWhat:'drops',limit:40,open:matchMedia('(min-width:900px)').matches};
+const st={dest:(v=>isC(v)?'KEF':v)(lsGet('ifw_dest','KEF')),bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),anyFrom:new Set(ANY_FROM),anyType:lsGet('ifw_any_type','ow'),mix:lsGet('ifw_rt_mix','1')==='1',anyMix:lsGet('ifw_any_mix','0')==='1',anyMin:lsGet('ifw_any_min','3'),anyMax:lsGet('ifw_any_max','7'),anySort:lsGet('ifw_any_sort','price'),anyDest:(()=>{try{const v=JSON.parse(lsGet('ifw_any_dest','[]'));return Array.isArray(v)?v.map(String).filter(k=>!isC(k)):[]}catch(e){return []}})(),anyMaxp:'',minM:1,maxM:6,unit:lsGet('ifw_stay_unit','m'),minD:30,maxD:182,stops:'direct',from:'',to:'',maxp:'',
+  route:'ALL-'+(v=>isC(v)?'KEF':v)(lsGet('ifw_dest','KEF')),kind:'direct',chDir:'both',chWhat:'drops',limit:40,open:matchMedia('(min-width:900px)').matches};
 
 function series(route,kind,prev){const src=prev?L.prev_cal:L.cal;let c=src?.[route]?.[kind];
   // route without Google checks of its own: the Anywhere scan's prices (no earlier check to compare with, so "prev" is the same)
@@ -531,16 +531,16 @@ function renderChanges(){
 }
 
 // ---------- anywhere ----------
-// destination picker: chosen cities (airport code) and countries ('c:' + country); nothing chosen = everywhere
+// destination picker: chosen airports (airport code); nothing chosen = everywhere
 const anyDests=()=>{const s=new Set();for(const r of Object.keys(ANY?.routes||{})){const d=r.split('-')[1];if(!ANY_FROM.includes(d))s.add(d)}return [...s]};
-const anyDestName=k=>k.startsWith('c:')?k.slice(2):(ANYAP[k]?(ANYAP[k][2]||ANYAP[k][1])+' ('+k+')':k);
+const anyDestName=k=>ANYAP[k]?(ANYAP[k][2]||ANYAP[k][1])+' ('+k+')':k;
 function anyDestPick(){
-  const ds=anyDests(),cs=[...new Set(ds.map(d=>ANYAP[d]?.[3]).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),by=(a,b)=>anyDestName(a).localeCompare(anyDestName(b));
+  const ds=anyDests(),by=(a,b)=>anyDestName(a).localeCompare(anyDestName(b));
   const opt=k=>st.anyDest.includes(k)?'':`<option value="${esc(k)}">${esc(anyDestName(k))}</option>`;
   return `<div class="f" style="margin-top:12px"><span class="t">Fly to</span>${st.anyDest.length?`<div class="chips" id="anyDestSel" style="margin-bottom:8px">${st.anyDest.map(k=>`<label title="Remove"><input type="checkbox" value="${esc(k)}" checked><span>${esc(anyDestName(k))} ×</span></label>`).join('')}</div>`:''}
-   <select id="anyDestAdd" aria-label="Add a destination" style="max-width:320px"><option value="">${st.anyDest.length?'Add another…':'Anywhere – pick a country or city…'}</option>${ds.length?`${ds.some(destOf)?`<optgroup label="Your airports">${ds.filter(destOf).sort(by).map(opt).join('')}</optgroup>`:''}<optgroup label="Countries">${cs.map(c=>opt('c:'+c)).join('')}</optgroup><optgroup label="Cities">${ds.sort(by).map(opt).join('')}</optgroup>`:''}</select></div>`;
+   <select id="anyDestAdd" aria-label="Add a destination" style="max-width:320px"><option value="">${st.anyDest.length?'Add another…':'Anywhere – pick an airport…'}</option>${ds.length?`${ds.some(destOf)?`<optgroup label="Your airports">${ds.filter(destOf).sort(by).map(opt).join('')}</optgroup>`:''}<optgroup label="All airports">${ds.sort(by).map(opt).join('')}</optgroup>`:''}</select></div>`;
 }
-const anyDestOk=(d,b)=>!st.anyDest.length||st.anyDest.includes(d)||st.anyDest.includes('c:'+b.country);
+const anyDestOk=d=>!st.anyDest.length||st.anyDest.includes(d);
 async function renderAny(){
   if(!ANY){$('view').innerHTML='<p class="sub">Loading…</p>';
     let al;[ANY,al]=await Promise.all([fetch('data/anywhere.json',{cache:'no-store'}).then(r=>r.ok?r.json():{routes:{}}).catch(()=>({routes:{}})),loadAirports()]);
@@ -777,7 +777,6 @@ function drawDest(){
   const o=(c,l)=>`<option value="${esc(c)}" ${c===DST()?'selected':''}>${esc(l)}</option>`;
   const rest=anyCodes().filter(c=>!followed(c)).map(c=>[c,`${nm(c)} (${c})${ANYAP[c]?.[3]?', '+ANYAP[c][3]:''}`]).sort((a,b)=>a[1].localeCompare(b[1]));
   $('dest').innerHTML=`<optgroup label="Your airports">${DESTS.map(d=>o(d.code,d.name+(d.name!==d.code?` (${d.code})`:''))).join('')}</optgroup>`+
-    `<optgroup label="Countries">${[...new Set(allCodes().map(c=>ANYAP[c]?.[3]).filter(Boolean))].sort((a,b)=>a.localeCompare(b)).map(n=>{const k=ctryCodes(n).length;return o('c:'+n,`${n}, ${k===1?'1 airport':'all '+k+' airports'}`)}).join('')}</optgroup>`+
     (rest.length?`<optgroup label="All airports">${rest.map(([c,l])=>o(c,l)).join('')}</optgroup>`:'')+'<option value="+">Airports and status…</option>';
 }
 const navOn=()=>document.querySelectorAll('nav button').forEach(x=>{x.classList.toggle('on',x.dataset.v===view);if(x.dataset.v===view)x.scrollIntoView({block:'nearest',inline:'nearest'});});
