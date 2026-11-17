@@ -15,15 +15,16 @@ export GIT_SSH_COMMAND="ssh -i /root/.ssh/flight_watch_deploy -o IdentitiesOnly=
 # missing (merged into an existing global block), validate, and restart Caddy with fresh certificates for the
 # flight-watch names (a reload would keep serving the cached ECDSA ones). Old certificates are kept in a backup.
 CF=/etc/caddy/Caddyfile
-if [ -f "$CF" ] && ! grep -q 'key_type rsa2048' "$CF" && [ ! -f "$APP/.rsa-failed" ]; then
+if [ -f "$CF" ] && ! grep -q 'key_type rsa2048' "$CF" && [ ! -f "$APP/.rsa-failed2" ]; then
   cp "$CF" "$CF.bak-before-rsa"
   if [ "$(grep -v '^\s*#' "$CF" | grep -v '^\s*$' | head -1 | tr -d '[:space:]')" = "{" ]; then
     awk 'BEGIN{d=0} !d && /^[[:space:]]*\{[[:space:]]*$/ {print; print "\tkey_type rsa2048"; d=1; next} {print}' "$CF.bak-before-rsa" > "$CF"
   else
     { printf '{\n\tkey_type rsa2048\n}\n\n'; cat "$CF.bak-before-rsa"; } > "$CF"
   fi
-  # syntax check (adapt only parses), then a reload, which keeps the running config if the new one is bad
-  if err=$(caddy adapt --config "$CF" --adapter caddyfile 2>&1 >/dev/null) && err=$(systemctl reload caddy 2>&1); then
+  # test by reloading the service: it keeps the running config if the new one is bad. (caddy validate/adapt run
+  # from here fail on their own: the Caddyfile reads basicauth secrets from variables only the caddy service has.)
+  if err=$(systemctl reload caddy 2>&1); then
     BK=/var/lib/caddy/ecdsa-backup-$(date +%Y%m%d%H%M); mkdir -p "$BK"
     for d in /var/lib/caddy/.local/share/caddy/certificates/*/fly.stromsparer.dk /var/lib/caddy/.local/share/caddy/certificates/*/fly.xn--strmsparer-2cb.dk; do
       [ -d "$d" ] && mv "$d" "$BK/$(basename "$(dirname "$d")")-$(basename "$d")"
@@ -33,8 +34,8 @@ if [ -f "$CF" ] && ! grep -q 'key_type rsa2048' "$CF" && [ ! -f "$APP/.rsa-faile
   else
     cp "$CF.bak-before-rsa" "$CF"
     systemctl reload caddy >/dev/null 2>&1 || true
-    { echo "caddy: adding key_type rsa2048 failed; Caddyfile left as it was. Error:"; echo "$err" | tail -8; } > "$WEB/data/caddy-change.txt"
-    touch "$APP/.rsa-failed"  # do not retry every 5 minutes; remove this file to try again
+    { echo "caddy: adding key_type rsa2048 failed; Caddyfile left as it was. Error:"; echo "$err" | tail -8; journalctl -u caddy -n 5 --no-pager -o cat 2>/dev/null | grep -i error | tail -3; } > "$WEB/data/caddy-change.txt"
+    touch "$APP/.rsa-failed2"  # do not retry every 5 minutes; remove this file to try again
   fi
   chmod 644 "$WEB/data/caddy-change.txt"
 fi
