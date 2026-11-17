@@ -13,7 +13,9 @@ POST   /api/anywhere         -> prices to anywhere from the "anywhere" scan (hea
                                 {"cal": {"CPH-EDI": {"start": "YYYY-MM-DD", "p": [price per day, 0 = none]}}}
                                 (older form: {"rows": [[FROM, TO, "YYYY-MM-DD", price], ...]}). Each route sent is
                                 replaced; other routes are kept. Written to data/anywhere.json:
-                                routes = cheapest day per route [date, price, updated], cal = day-by-day prices
+                                routes = cheapest day per route [date, price, updated], cal = day-by-day prices.
+                                "dcal" (same form) = direct-only day-by-day prices; an empty "p" means the route
+                                was checked and has no direct flights. Kept as dcal in data/anywhere.json.
 """
 import json, os, re, uuid, time, hmac, datetime, threading, subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -279,14 +281,16 @@ class H(BaseHTTPRequestHandler):
             if n > 2000000:
                 raise ValueError('too big')
             body = json.loads(self.rfile.read(n))
-            rows, cals = body.get('rows') or [], {}
-            for k, c in (body.get('cal') or {}).items():
-                if not re.fullmatch(r'[A-Z]{3}-[A-Z]{3}', k):
-                    raise ValueError('bad route')
+            rows, cals, dcals = body.get('rows') or [], {}, {}
+            for src, out in (('cal', cals), ('dcal', dcals)):
+                for k, c in (body.get(src) or {}).items():
+                    if not re.fullmatch(r'[A-Z]{3}-[A-Z]{3}', k):
+                        raise ValueError('bad route')
+                    s0 = datetime.date.fromisoformat(c['start'])
+                    out[k] = {'start': str(s0), 'p': [max(0, round(float(x))) for x in c['p']][:400]}
+            for k, c in cals.items():
                 s0 = datetime.date.fromisoformat(c['start'])
-                ps = [max(0, round(float(x))) for x in c['p']][:400]
-                cals[k] = {'start': str(s0), 'p': ps}
-                rows += [[*k.split('-'), str(s0 + datetime.timedelta(days=i)), x] for i, x in enumerate(ps) if x]
+                rows += [[*k.split('-'), str(s0 + datetime.timedelta(days=i)), x] for i, x in enumerate(c['p']) if x]
             new = {}
             for o, d, day, p in rows:
                 if not (re.fullmatch(r'[A-Z]{3}', o) and re.fullmatch(r'[A-Z]{3}', d)):
@@ -307,7 +311,9 @@ class H(BaseHTTPRequestHandler):
                 cur = {'routes': {}}
             today = str(datetime.date.today())
             routes = {k: v for k, v in cur.get('routes', {}).items() if v[0] >= today}  # drop passed dates
-            cal = cur.get('cal', {})
+            cal, dcal = cur.get('cal', {}), cur.get('dcal', {})
+            for k, c in dcals.items():
+                dcal[k] = {**c, 'at': now}
             for k, (day, p) in new.items():
                 routes[k] = [day, p, now]
             for k, c in cals.items():
@@ -319,7 +325,9 @@ class H(BaseHTTPRequestHandler):
             routes = {k: v for k, v in routes.items() if len(v) < 3 or v[2] >= old}
             last_day = lambda c: str(datetime.date.fromisoformat(c['start']) + datetime.timedelta(days=len(c['p']) - 1))
             cal = {k: c for k, c in cal.items() if c.get('at', now) >= old and last_day(c) >= today}
-            json.dump({'updated': now, 'routes': routes, 'cal': cal}, open(path + '.tmp', 'w'), separators=(',', ':'))
+            # direct: an empty calendar ("no direct flights") is kept until a week old, like the rest
+            dcal = {k: c for k, c in dcal.items() if c.get('at', now) >= old and (not c['p'] or last_day(c) >= today)}
+            json.dump({'updated': now, 'routes': routes, 'cal': cal, 'dcal': dcal}, open(path + '.tmp', 'w'), separators=(',', ':'))
             os.replace(path + '.tmp', path)
         self.reply(200, {'saved': len(new), 'routes': len(routes)})
 

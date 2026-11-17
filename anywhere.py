@@ -2,6 +2,8 @@
 worldwide, both ways, for the next 6 months (3 windows of 61 days, the most one fli call returns).
 The page shows the cheapest one-way ticket per destination, and round trips (out + home on the same airport)
 for a chosen number of days, from these day-by-day one-way prices.
+After all prices, a second pass gets the direct-only prices of every route (fli --stops 0), for the page's
+"Direct only" filter. A route with no flights at all is not looked up again for direct flights.
 
 Results are saved to a local file after every lookup, so a stopped run continues where it stopped
 (within 20 hours; after that a run starts over).
@@ -70,14 +72,16 @@ for o in HOME:
     for d in DEST:
         if o != d and not (o != 'KEF' and d in HOME) and (d, o) not in pairs:
             pairs.append((o, d))
-jobs = [(x, y, a, b) for o, d in pairs for x, y in [(o, d), (d, o)] for a, b in wins]
+# all prices first (as before), then direct-only prices, so the main prices stay as fresh as they were
+jobs = [(x, y, a, b, k) for k in ('any', 'direct') for o, d in pairs for x, y in [(o, d), (d, o)] for a, b in wins]
 
 
 def lookup(j):
-    o, d, a, b = j
+    o, d, a, b, k = j
+    stops = ['--stops', '0'] if k == 'direct' else []
     for _ in range(2):
         try:
-            r = subprocess.run([FLI, 'dates', o, d, '--from', str(a), '--to', str(b), '--currency', 'DKK', '--format', 'json'],
+            r = subprocess.run([FLI, 'dates', o, d, '--from', str(a), '--to', str(b), *stops, '--currency', 'DKK', '--format', 'json'],
                                capture_output=True, text=True, timeout=40)
             js = json.loads(r.stdout)
             if js.get('success'):
@@ -94,33 +98,39 @@ def read_all():
         for line in open(OUT):
             try:
                 x = json.loads(line)
-                res[tuple(x['j'])] = x['r']
+                j = x['j'] + ['any'] * (4 - len(x['j']))  # lines from before the direct pass have no kind
+                res[tuple(j)] = x['r']
             except Exception:
                 pass
     return res
 
 
 def upload(routes):
-    """Send the day-by-day prices of each route in `routes`, from everything found so far (all windows)."""
+    """Send the day-by-day prices of each (route, kind) in `routes`, from everything found so far (all windows).
+    Direct routes are sent even with no prices: that tells the page the route has no direct flights."""
     if not TOKEN or not routes:
         return
     days = {}
-    for (o, d, _), r in read_all().items():
-        if f'{o}-{d}' in routes:
+    for (o, d, _, k), r in read_all().items():
+        if (f'{o}-{d}', k) in routes:
+            m = days.setdefault((f'{o}-{d}', k), {})
             for _o, _d, day, p in r or []:
-                m = days.setdefault(f'{o}-{d}', {})
                 m[day] = min(round(p), m.get(day, 10 ** 9))
-    cal = {}
-    for k, m in days.items():
+    out = {'cal': {}, 'dcal': {}}
+    for (rk, k), m in days.items():
+        if not m:
+            if k == 'direct':
+                out['dcal'][rk] = {'start': str(today), 'p': []}
+            continue
         d0 = datetime.date.fromisoformat(min(m))
         n = (datetime.date.fromisoformat(max(m)) - d0).days + 1
-        cal[k] = {'start': str(d0), 'p': [m.get(str(d0 + datetime.timedelta(days=i)), 0) for i in range(n)]}
-    body = json.dumps({'cal': cal}).encode()
+        out['cal' if k == 'any' else 'dcal'][rk] = {'start': str(d0), 'p': [m.get(str(d0 + datetime.timedelta(days=i)), 0) for i in range(n)]}
+    body = json.dumps(out).encode()
     for site in SITES:
         req = urllib.request.Request(site + '/api/anywhere', data=body, method='POST',
                                      headers={'Content-Type': 'application/json', 'X-Upload-Token': TOKEN, 'User-Agent': 'flight-watch-anywhere'})
         try:
-            print('upload', len(cal), 'routes:', urllib.request.urlopen(req, timeout=60).read().decode(), flush=True)
+            print('upload', len(out['cal']), 'routes,', len(out['dcal']), 'direct:', urllib.request.urlopen(req, timeout=60).read().decode(), flush=True)
             return
         except urllib.error.HTTPError as e:
             print('upload refused', e.code, e.read()[:200], flush=True)
@@ -130,23 +140,25 @@ def upload(routes):
 
 
 if UPLOAD_ONLY:
-    upload({f'{o}-{d}' for (o, d, _), r in read_all().items()})
+    upload({(f'{o}-{d}', k) for (o, d, _, k), r in read_all().items()})
     sys.exit(0)
 
-done = {k for k, r in read_all().items() if r is not None}
-todo = [j for j in jobs if (j[0], j[1], str(j[2])) not in done]
+found = {k: r for k, r in read_all().items() if r is not None}
+todo = [j for j in jobs if (j[0], j[1], str(j[2]), j[4]) not in found]
 lock = threading.Lock()
 pending, n, t0 = set(), [0], time.time()
 print(len(jobs), 'lookups,', len(todo), 'left', flush=True)
 
 
 def work(j):
-    r = lookup(j)
+    # no flights at all in this window: no direct ones either, so no need to ask
+    r = [] if j[4] == 'direct' and found.get((j[0], j[1], str(j[2]), 'any')) == [] else lookup(j)
     with lock:
         if r is not None:
+            found[(j[0], j[1], str(j[2]), j[4])] = r
             with open(OUT, 'a') as f:
-                f.write(json.dumps({'j': [j[0], j[1], str(j[2])], 'r': r}) + '\n')
-            pending.add(f'{j[0]}-{j[1]}')
+                f.write(json.dumps({'j': [j[0], j[1], str(j[2]), j[4]], 'r': r}) + '\n')
+            pending.add((f'{j[0]}-{j[1]}', j[4]))
         n[0] += 1
         if n[0] % 25 == 0 or n[0] == len(todo):
             print(n[0], '/', len(todo), int(time.time() - t0), 's', flush=True)
