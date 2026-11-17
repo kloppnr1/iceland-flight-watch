@@ -8,10 +8,11 @@ Routes the server has no Google prices for yet (a destination that was just adde
 UPLOAD_TOKEN set their calendars are uploaded as soon as they are done, before the slow day-by-day pass.
 
 Time limit GF_MINUTES (default 90): the calendar pass goes route by route (new routes, then the ones
-whose calendar on the server is oldest), uploads every 5 routes (merge: the server keeps the rest) and
-stops when the time is up; the routes it did not reach keep their earlier calendars until a later run.
-Then, with the time that is left, the day-by-day pass (flight times, days the calendar missed) runs for the next GF_DAY_DAYS days
-(default 120), routes with the oldest flight times first,
+whose calendar on the server is oldest), skips routes whose server calendar is under GF_FRESH_HOURS (default 10)
+hours old, uploads every 5 routes (merge: the server keeps the rest) and stops after GF_CAL_MINUTES (default 55)
+so time is left for flight times; the routes it did not reach keep their earlier calendars until a later run.
+Then, until GF_MINUTES, the day-by-day pass (flight times, days the calendar missed) runs for the next GF_DAY_DAYS days
+(default 60), routes with the oldest flight times first,
 and uploads each route when it is done. Routes it does not reach keep their earlier flight times and get
 them on a later run.
 
@@ -24,7 +25,9 @@ import json, os, sys, glob, datetime, subprocess, time, urllib.request
 FLI = os.environ.get('FLI', 'fli')
 T0 = time.time()
 MINUTES = float(os.environ.get('GF_MINUTES', 90))
-DAY_DAYS = int(os.environ.get('GF_DAY_DAYS', 120))
+DAY_DAYS = int(os.environ.get('GF_DAY_DAYS', 60))
+CAL_MINUTES = float(os.environ.get('GF_CAL_MINUTES', 55))
+FRESH_HOURS = float(os.environ.get('GF_FRESH_HOURS', 10))
 NEW_ONLY = '--new-only' in sys.argv
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
 final = args[0] if args else ('calnew' if NEW_ONLY else 'cal')
@@ -136,14 +139,28 @@ def over(extra=0):
     return time.time() - T0 > MINUTES * 60 + extra
 
 
+def cal_fresh(r):
+    """The server's Google calendar for this route is under FRESH_HOURS old: no need to fetch it again."""
+    at = status_srv.get(f'{r[0]}-{r[1]}', {}).get('at')
+    if not at or r in new or status_srv.get(f'{r[0]}-{r[1]}', {}).get('src') != 'google':
+        return False
+    try:
+        return (now - datetime.datetime.fromisoformat(at)).total_seconds() < FRESH_HOURS * 3600
+    except Exception:
+        return False
+
+
 unsent = []
 for i_route, (o, d) in enumerate(routes):
     if i_route == len(new) and not prog.get('quick_sent'):
         quick_upload(); prog['quick_sent'] = True; save_prog()
-    if not NEW_ONLY and over():
-        left = [f'{a}-{b}' for a, b in routes[i_route:]]
-        print(f'time limit ({MINUTES:.0f} min) reached in the calendar pass; {len(left)} routes keep their earlier calendars:', left, flush=True)
+    if not NEW_ONLY and time.time() - T0 > CAL_MINUTES * 60:
+        left = [f'{a}-{b}' for a, b in routes[i_route:] if not cal_fresh((a, b))]
+        print(f'calendar time ({CAL_MINUTES:.0f} min) used; {len(left)} routes keep their earlier calendars:', left, flush=True)
         break
+    if not NEW_ONLY and cal_fresh((o, d)):
+        print(o, d, f'calendar under {FRESH_HOURS:.0f} h old on the server, skipped', flush=True)
+        continue
     if not NEW_ONLY and i_route >= len(new):
         unsent.append((o, d))
         if len(unsent) > 5:
