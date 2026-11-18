@@ -335,7 +335,7 @@ const EXT='<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2h6v6M10 2 3 
 const lnk=(href,label,cls='')=>`<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener">${label}${EXT}</a>`;
 let L=null,CH=[],BOARD=[],WATCH=[],BAGS=null,PAT=null,view='trips';
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}};const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
-const st={dest:(v=>isC(v)?'KEF':v)(lsGet('ifw_dest','KEF')),bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),mix:lsGet('ifw_rt_mix','1')==='1',anySort:lsGet('ifw_any_sort','price'),anyDest:(()=>{try{const v=JSON.parse(lsGet('ifw_any_dest','[]'));return Array.isArray(v)?v.map(String).filter(k=>!isC(k)):[]}catch(e){return []}})(),minM:1,maxM:6,unit:lsGet('ifw_stay_unit','m'),minD:30,maxD:182,stops:lsGet('ifw_direct','1')==='1'?'direct':'any',from:'',to:'',maxp:'',
+const st={dest:(v=>isC(v)?'KEF':v)(lsGet('ifw_dest','KEF')),bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),mix:lsGet('ifw_rt_mix','1')==='1',anySort:lsGet('ifw_any_sort','price'),anyDest:(()=>{try{const v=JSON.parse(lsGet('ifw_any_dest','[]'));return Array.isArray(v)?v.map(String).filter(k=>!isC(k)):[]}catch(e){return []}})(),minM:0,maxM:0.5,unit:lsGet('ifw_stay_unit2','d'),minD:4,maxD:14,stops:lsGet('ifw_direct','1')==='1'?'direct':'any',from:'',to:'',maxp:'',
   route:'ALL-'+(v=>isC(v)?'KEF':v)(lsGet('ifw_dest','KEF')),kind:'direct',chDir:'both',chWhat:'drops',limit:40,open:matchMedia('(min-width:900px)').matches};
 
 const SER=new Map();  // data is loaded once, so each route's series is built once
@@ -416,7 +416,7 @@ function drawFilters(){
     if(i.name==='unit'){  // keep the same stay when switching between months and days
       if(i.value==='d'){st.minD=Math.round(+st.minM*30.4)||1;st.maxD=Math.round(+st.maxM*30.4)||365;}
       else{st.minM=Math.round(+st.minD/30.4*2)/2;st.maxM=Math.max(.5,Math.round(+st.maxD/30.4*2)/2);}
-      st.unit=i.value;lsSet('ifw_stay_unit',st.unit);drawFilters();render();return;}
+      st.unit=i.value;lsSet('ifw_stay_unit2',st.unit);drawFilters();render();return;}
     if(i.name==='mix'){st.mix=i.value==='1';lsSet('ifw_rt_mix',i.value);st.limit=40;drawFilters();render();return;}
     st[i.name]=i.value;if(i.name==='type'||i.name==='owDir'){st.limit=40;drawFilters();render()}else upd()});
   ['minM','maxM','minD','maxD','from','to','maxp'].forEach(id=>{const e=$(id);if(e)e.oninput=()=>{st[id]=e.value;upd()}});
@@ -720,7 +720,7 @@ function renderRel(){
 }
 
 // ---------- watches ----------
-const W={name:'',out:new Set(['CPH','BLL']),home:new Set(['CPH','BLL']),from:'',to:'',min:55,max:65,direct:true,target:''};
+const W={name:'',out:new Set(['CPH','BLL']),home:new Set(['CPH','BLL']),from:'',to:'',min:4,max:14,direct:true,target:''};
 const getPin=()=>{try{return localStorage.getItem('ifw_pin')||''}catch(e){return ''}};
 const setPin=p=>{try{localStorage.setItem('ifw_pin',p)}catch(e){}};
 const fdd=s=>D(s).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
