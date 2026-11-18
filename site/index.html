@@ -54,6 +54,12 @@ h1 .k i::before{content:"";position:absolute;right:100%;top:55%;width:34px;heigh
 .combo .co.all{color:var(--lupine);font-weight:600}
 .combo .co[aria-selected="true"],.combo .co:hover{background:var(--lupine-soft)}
 .combo .cn{padding:10px 12px;color:var(--muted)}
+/* destination menu: looks like a plain dropdown; the search box shows inside the list when it is open */
+.cbtn{font:inherit;font-weight:600;font-size:16px;color:inherit;text-align:left;cursor:pointer;background:var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2358686f' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 10px center;border:1px solid var(--line);border-radius:var(--r-md);padding:6px 32px 6px 10px;min-height:40px;max-width:72vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cbtn[aria-expanded="true"]{border-color:var(--lupine)}
+.cpop{position:absolute;z-index:30;top:calc(100% + 4px);left:0;width:min(420px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:0 8px 24px rgba(20,32,38,.18);padding:8px;font-weight:400;font-size:15px}
+.cpop[hidden]{display:none}
+.cpop .cm{list-style:none;margin:6px -8px -8px;padding:0 0 4px;max-height:min(55vh,420px);overflow:auto;overscroll-behavior:contain}
 .dpanel{max-width:1120px;margin:0 auto 12px;padding:0 16px}
 .dpanel .in{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg)}
 .dpanel .fgrid{border-bottom:1px solid var(--line)}
@@ -829,6 +835,8 @@ function noData(){
 // ---------- searchable picker: type an airport, city, code or country ----------
 // items(q) -> [{g: group heading, v: value, l: label, s: small text, cls}]; onPick(v, q); text() = shown when closed
 let comboN=0;
+// scroll a list so the item shows, without scrolling the page (scrollIntoView can shift the whole page sideways on phones)
+const keepIn=(ul,li)=>{const t=li.getBoundingClientRect().top-ul.getBoundingClientRect().top+ul.scrollTop,b=t+li.offsetHeight;if(t<ul.scrollTop)ul.scrollTop=t;else if(b>ul.scrollTop+ul.clientHeight)ul.scrollTop=b-ul.clientHeight;};
 function combo(host,{label,placeholder,items,onPick,text}){
   const id='cb'+(++comboN);
   host.innerHTML=`<input type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${id}" aria-label="${esc(label)}" autocomplete="off" spellcheck="false" placeholder="${esc(placeholder||'')}"><ul class="cl" id="${id}" role="listbox" aria-label="${esc(label)}" hidden></ul>`;
@@ -839,7 +847,7 @@ function combo(host,{label,placeholder,items,onPick,text}){
       h+=`<li class="co ${x.cls||''}" role="option" id="${id}-${i}" data-i="${i}" aria-selected="${i===act}"><span>${esc(x.l)}</span>${x.s?`<small>${esc(x.s)}</small>`:''}</li>`;});
     ul.innerHTML=h||`<li class="cn" role="presentation">No airport or country matches “${esc(q)}”.</li>`;setAct(act);};
   const setAct=i=>{act=i;ul.querySelectorAll('.co').forEach(li=>li.setAttribute('aria-selected',String(+li.dataset.i===i)));
-    const li=ul.querySelector(`[data-i="${i}"]`);if(li){inp.setAttribute('aria-activedescendant',li.id);li.scrollIntoView({block:'nearest'});}else inp.removeAttribute('aria-activedescendant');};
+    const li=ul.querySelector(`[data-i="${i}"]`);if(li){inp.setAttribute('aria-activedescendant',li.id);keepIn(ul,li);}else inp.removeAttribute('aria-activedescendant');};
   const place=()=>{ul.style.left='0px';const r=host.getBoundingClientRect(),w=ul.offsetWidth;ul.style.left=Math.min(0,innerWidth-16-w-r.left)+'px';};
   const openL=()=>{if(open)return;open=true;ul.hidden=false;inp.setAttribute('aria-expanded','true');draw();place();inp.select();};
   const close=(keep)=>{open=false;ul.hidden=true;inp.setAttribute('aria-expanded','false');inp.removeAttribute('aria-activedescendant');if(!keep)show(text());};
@@ -856,6 +864,38 @@ function combo(host,{label,placeholder,items,onPick,text}){
   ul.onclick=e=>{const li=e.target.closest('.co');if(li)pick(+li.dataset.i);};
   show(text());
   return {refresh:()=>{if(!open)show(text());else draw();}};
+}
+// the same list behind a button that looks like a plain dropdown; opening it shows a search box above the list
+function menu(host,{label,placeholder,items,onPick,text,current}){
+  const id='cb'+(++comboN);
+  host.innerHTML=`<button type="button" class="cbtn" aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(label)}"></button><div class="cpop" hidden>
+    <input type="search" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-controls="${id}" aria-label="Search: airport, city or country" autocomplete="off" spellcheck="false" placeholder="${esc(placeholder||'')}">
+    <ul class="cm" id="${id}" role="listbox" aria-label="${esc(label)}"></ul></div>`;
+  const btn=host.querySelector('button'),pop=host.querySelector('.cpop'),inp=pop.querySelector('input'),ul=pop.querySelector('ul');let opts=[],act=-1,open=false;
+  const setAct=i=>{act=i;ul.querySelectorAll('.co').forEach(li=>li.setAttribute('aria-selected',String(+li.dataset.i===i)));
+    const li=ul.querySelector(`[data-i="${i}"]`);if(li){inp.setAttribute('aria-activedescendant',li.id);keepIn(ul,li);}else inp.removeAttribute('aria-activedescendant');};
+  const draw=()=>{const q=inp.value;const xs=items(q);opts=xs;let g=null,h='';
+    xs.forEach((x,i)=>{if(x.g!==g){g=x.g;if(g)h+=`<li class="cg" role="presentation">${esc(g)}</li>`;}
+      h+=`<li class="co ${x.cls||''}" role="option" id="${id}-${i}" data-i="${i}"><span>${esc(x.l)}</span>${x.s?`<small>${esc(x.s)}</small>`:''}</li>`;});
+    ul.innerHTML=h||`<li class="cn" role="presentation">No airport or country matches “${esc(q)}”.</li>`;
+    const cur=q?-1:xs.findIndex(x=>x.v===current());setAct(cur>=0?cur:q?0:-1);};
+  const place=()=>{pop.style.left='0px';const r=host.getBoundingClientRect();pop.style.left=Math.min(0,innerWidth-16-pop.offsetWidth-r.left)+'px';};
+  const openM=()=>{if(open)return;open=true;pop.hidden=false;btn.setAttribute('aria-expanded','true');inp.value='';place();draw();inp.focus({preventScroll:true});};
+  const close=(focusBtn)=>{if(!open)return;open=false;pop.hidden=true;btn.setAttribute('aria-expanded','false');if(focusBtn)btn.focus();};
+  const pick=i=>{const x=opts[i];if(!x)return;const q=inp.value;close(true);onPick(x.v,q);};
+  btn.onclick=()=>open?close(true):openM();
+  btn.onkeydown=e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();openM();}};
+  inp.oninput=()=>{draw();};
+  inp.onkeydown=e=>{
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(opts.length)setAct((act+(e.key==='ArrowDown'?1:-1)+opts.length)%opts.length);}
+    else if(e.key==='Enter'){e.preventDefault();pick(act<0?0:act);}
+    else if(e.key==='Escape'){e.preventDefault();close(true);}
+    else if(e.key==='Tab')close();};
+  document.addEventListener('mousedown',e=>{if(open&&!host.contains(e.target))close();});
+  ul.onmousedown=e=>e.preventDefault();
+  ul.onclick=e=>{const li=e.target.closest('.co');if(li)pick(+li.dataset.i);};
+  const show=()=>{btn.textContent=text();};show();
+  return {refresh:()=>{show();if(open)draw();}};
 }
 // match airports on code, city, airport name or country; a matching country brings all its airports
 function codeScore(c,w){
@@ -876,17 +916,18 @@ let destCombo=null;
 const destLabel=()=>isAny(DST())?'Anywhere (every destination)':`${nm(DST())}${isC(DST())?'':' ('+DST()+')'}`;
 function drawDest(){
   if(destCombo)return destCombo.refresh();
-  destCombo=combo($('destC'),{label:'Destination: type an airport, city or country',placeholder:'Airport, city or country',
-    text:destLabel,
+  destCombo=menu($('destC'),{label:'Destination',placeholder:'Search airport, city or country',
+    text:destLabel,current:DST,
     items:q=>{const w=fold(q).trim(),out=[];
+      if(!w)out.push({g:'',v:'+',l:'Airports and status…',cls:'all'});
       if(!w||'anywhere'.startsWith(w)||'every'.startsWith(w))out.push({g:'',v:'*',l:'Anywhere (every destination)'});
       const mine=DESTS.filter(d=>!w||codeScore(d.code,w)||fold(d.name).includes(w)||fold(d.place).includes(w));
       mine.forEach(d=>out.push({g:'Your airports',v:d.code,l:`${d.name}${d.name!==d.code?` (${d.code})`:''}`,s:d.place}));
       findCodes(anyCodes().filter(c=>!followed(c)),q).forEach(([n,l])=>l.forEach(c=>out.push({g:n,v:c,l:`${nm(c)} (${c})`,s:apSub(c)})));
-      out.push({g:' ',v:'+',l:w?'Find and follow another airport…':'Airports and status…',cls:'all'});
+      if(w)out.push({g:' ',v:'+',l:'Find and follow another airport…',cls:'all'});
       return out;},
     onPick:(v,q)=>{if(v!=='+')return setDest(v);openDPanel();$('dpanel').scrollIntoView({block:'start'});
-      const f=$('dFind');if(f&&q&&q!==destLabel()){f.value=q;f.dispatchEvent(new Event('input'));}}});
+      const f=$('dFind');if(f&&q){f.value=q;f.dispatchEvent(new Event('input'));}}});
 }
 const navOn=()=>document.querySelectorAll('nav button').forEach(x=>{x.classList.toggle('on',x.dataset.v===view);if(x.dataset.v===view)x.scrollIntoView({block:'nearest',inline:'nearest'});});
 function setDest(c){
