@@ -13,7 +13,7 @@ on one day with its number of stops, and a non-empty list can be trusted.
 
 Routes: those in data/anywhere.json with neither direct prices nor a confirmed "no direct"; followed airports first,
 then in the scan's destination order. Stops after CONFIRM_MINUTES (default 100). Needs UPLOAD_TOKEN to send results.
-Usage: UPLOAD_TOKEN=... python3 confirm_direct.py [ROUTE ...]
+Usage: UPLOAD_TOKEN=... python3 confirm_direct.py [ROUTE ...]   (CONFIRM_PART=1/2 and 2/2 split the list between two machines)
 """
 import datetime, json, os, subprocess, sys, threading, time, urllib.error, urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -124,8 +124,11 @@ else:
     pos = {x: i for i, x in enumerate(followed + [x for x in order if x not in followed])}
     dest = lambda r: r.split('-')[1] if r.split('-')[0] in HOME else r.split('-')[0]
     todo = sorted((r for r in cal if r not in dcal and r not in nod), key=lambda r: (pos.get(dest(r), 9999), r))
+if os.environ.get('CONFIRM_PART'):  # "1/2": every second route from the first, so two machines can share the list
+    k, n = map(int, os.environ['CONFIRM_PART'].split('/'))
+    todo = todo[k - 1::n]
 print(len(todo), 'routes to confirm', flush=True)
-job = Job('confirm')
+job = Job('confirm' + ('-' + os.environ['CONFIRM_PART'].split('/')[0] if os.environ.get('CONFIRM_PART') else ''))
 res = {'direct': 0, 'none': 0, 'unknown': 0, 'skipped': 0}
 pend = {'dcal': {}, 'nod': {}}
 lock = threading.Lock()

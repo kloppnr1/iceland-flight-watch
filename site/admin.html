@@ -121,6 +121,8 @@ const JOBS=[
   {id:'google',name:'Google prices',what:'Cloud task, twice a day: calendars, then flight times for the next 60 days (up to 90 min).',stale:30,late:16},
   {id:'google-new',name:'Google prices, new airport',what:'Cloud task started when an airport is added: calendars for the new routes (about 10 min).',stale:30,late:null},
   {id:'confirm',name:'Direct flights check',what:'Runs at the end of the Anywhere scan: confirms which routes really have direct flights and which have none (full flight lists for 4 days).',stale:30,late:null},
+  {id:'confirm-1',name:'Direct flights check, part 1',what:'One-off run of the check, first half of the routes.',stale:30,late:null},
+  {id:'confirm-2',name:'Direct flights check, part 2',what:'One-off run of the check, second half of the routes (second cloud session).',stale:30,late:null},
   {id:'anywhere',name:'Anywhere scan',what:'Cloud task, daily: all prices and direct-only prices to about 140 destinations (11–12 h).',stale:30,late:30},
 ];
 const STATE={running:['Running','run'],done:['Finished','ok'],failed:['Failed','bad'],stopped:['Stopped early','warn'],lost:['Ended without report','warn']};
