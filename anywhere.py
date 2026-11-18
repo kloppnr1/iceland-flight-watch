@@ -198,11 +198,8 @@ def work(j):
     if r is not None and key(j, 'direct') not in found:
         # no flights at all in this window: no direct ones either, so no need to ask
         rd = [] if r == [] else lookup(j, 'direct')
-        for _ in range(2):  # Google sometimes answers a direct search with an empty list: ask again before
-            if rd != [] or r == []:  # saving the route as "no direct flights"
-                break
-            time.sleep(5)
-            rd = lookup(j, 'direct')
+        if rd == [] and r:  # Google sometimes answers a direct search with an empty list: ask once more before
+            rd = lookup(j, 'direct')  # saving "no direct flights" (most routes really have none, so only once)
         if rd is not None:
             save(j, 'direct', rd)
     with lock:
