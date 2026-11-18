@@ -214,5 +214,7 @@ def work(j):
 
 with ThreadPoolExecutor(4) as ex:
     list(ex.map(work, todo))
-print('finished', len(todo), int(time.time() - t0), 's', flush=True)
 job.finish('done', f'{len(todo)} lookups in {(time.time() - t0) / 3600:.1f} h' + (f', {failed[0]} failed (tried again next run)' if failed[0] else ''))
+# then confirm direct / no direct flights for the routes that still have no confirmed answer (confirm_direct.py)
+subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'confirm_direct.py')])
+print('finished', len(todo), int(time.time() - t0), 's', flush=True)

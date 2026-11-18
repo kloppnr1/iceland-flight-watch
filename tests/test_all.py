@@ -86,6 +86,13 @@ class Api(unittest.TestCase):
         call('POST', '/api/anywhere', {'dcal': {'CPH-EDI': cal(DAY(1), [])}, 'cal': {'CPH-EDI': cal(DAY(1), [0])}}, **{'X-Upload-Token': 'tok'})
         d = json.load(open(os.path.join(os.environ['DATA_DIR'], 'anywhere.json')))
         self.assertEqual((d['dcal']['CPH-EDI']['p'], d['cal']['CPH-EDI']['p']), ([0, 450], [400, 0, 113, 250]))
+        # confirmed "no direct flights" is kept apart; direct prices found later replace it
+        call('POST', '/api/anywhere', {'nod': {'AAL-EDI': {'days': 4, 'flights': 90}}}, **{'X-Upload-Token': 'tok'})
+        d = json.load(open(os.path.join(os.environ['DATA_DIR'], 'anywhere.json')))
+        self.assertEqual(d['nod']['AAL-EDI']['days'], 4)
+        call('POST', '/api/anywhere', {'dcal': {'AAL-EDI': cal(DAY(1), [300])}}, **{'X-Upload-Token': 'tok'})
+        d = json.load(open(os.path.join(os.environ['DATA_DIR'], 'anywhere.json')))
+        self.assertEqual((list(d['nod']), d['dcal']['AAL-EDI']['p']), ([], [300]))
         self.assertEqual(d['routes']['CPH-EDI'][:2], [DAY(3), 113])  # direct prices do not change the cheapest day
 
     def test_anywhere_cleanup(self):

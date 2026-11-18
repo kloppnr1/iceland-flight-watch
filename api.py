@@ -17,6 +17,9 @@ POST   /api/anywhere         -> prices to anywhere from the "anywhere" scan (hea
                                 "dcal" (same form) = direct-only day-by-day prices, kept as dcal in data/anywhere.json.
                                 Calendars without any price are ignored (Google often answers empty although there
                                 are flights), so a route keeps its earlier prices.
+                                "nod": {"AAL-LHR": {"days": 4, "flights": 120}} = confirmed no direct flights: full flight
+                                lists for that many days across the next 6 months had no nonstop flight
+                                (confirm_direct.py). Kept as nod; direct prices for a route replace it.
 POST   /api/jobs             -> progress of a download job (jobreport.py; header X-Upload-Token):
                                 {"job", "run", "state": running|done|failed|stopped, "phase", "done", "total",
                                  "note", "errors", "last_error"}. Written to data/jobs.json for admin.html:
@@ -291,7 +294,11 @@ class H(BaseHTTPRequestHandler):
             if n > 2000000:
                 raise ValueError('too big')
             body = json.loads(self.rfile.read(n))
-            rows, cals, dcals = body.get('rows') or [], {}, {}
+            rows, cals, dcals, nods = body.get('rows') or [], {}, {}, {}
+            for k, v in (body.get('nod') or {}).items():
+                if not re.fullmatch(r'[A-Z]{3}-[A-Z]{3}', k):
+                    raise ValueError('bad route')
+                nods[k] = {'days': int(v['days']), 'flights': int(v['flights'])}
             for src, out in (('cal', cals), ('dcal', dcals)):
                 for k, c in (body.get(src) or {}).items():
                     if not re.fullmatch(r'[A-Z]{3}-[A-Z]{3}', k):
@@ -321,13 +328,17 @@ class H(BaseHTTPRequestHandler):
                 cur = {'routes': {}}
             today = str(datetime.date.today())
             routes = {k: v for k, v in cur.get('routes', {}).items() if v[0] >= today}  # drop passed dates
-            cal, dcal = cur.get('cal', {}), cur.get('dcal', {})
+            cal, dcal, nod = cur.get('cal', {}), cur.get('dcal', {}), cur.get('nod', {})
+            for k, v in nods.items():
+                nod[k] = {**v, 'at': now}
+                dcal.pop(k, None)
             # Google often answers a search with an empty list although the route has flights (seen on half the
             # searches for CPH-LHR, 18 Nov), so an empty calendar proves nothing: it is ignored and the route keeps
             # what it had. Only calendars with prices are stored.
             for k, c in dcals.items():
                 if any(c['p']):
                     dcal[k] = {**c, 'at': now}
+                    nod.pop(k, None)
             for k, (day, p) in new.items():
                 routes[k] = [day, p, now]
             for k, c in cals.items():
@@ -340,7 +351,8 @@ class H(BaseHTTPRequestHandler):
             cal = {k: c for k, c in cal.items() if c.get('at', now) >= old and last_day(c) >= today}
             # direct: only calendars with prices (earlier "no direct flights" entries were often Google's empty answers)
             dcal = {k: c for k, c in dcal.items() if c.get('at', now) >= old and any(c['p']) and last_day(c) >= today}
-            json.dump({'updated': now, 'routes': routes, 'cal': cal, 'dcal': dcal}, open(path + '.tmp', 'w'), separators=(',', ':'))
+            nod = {k: v for k, v in nod.items() if v.get('at', now) >= old and k not in dcal}
+            json.dump({'updated': now, 'routes': routes, 'cal': cal, 'dcal': dcal, 'nod': nod}, open(path + '.tmp', 'w'), separators=(',', ':'))
             os.replace(path + '.tmp', path)
         self.reply(200, {'saved': len(new), 'routes': len(routes)})
 

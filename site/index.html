@@ -345,7 +345,7 @@ function series0(route,kind,prev){const src=prev?L.prev_cal:L.cal;let c=src?.[ro
   if(!L.cal?.[route]){const A=kind==='direct'?ANY?.dcal:ANY?.cal;if(A?.[route])c=A[route];}const m=new Map();if(!c)return m;let d=c.start;c.p.forEach(v=>{if(v)m.set(d,v);d=add(d,1)});return m;}
 const hasPrev=()=>!!L.prev_cal;
 // has this route been checked for direct flights? (followed: the twice-daily checks; others: the Anywhere scan)
-const checked=r=>!!(L.cal?.[r]||ANY?.dcal?.[r]);
+const checked=r=>!!(L.cal?.[r]||ANY?.dcal?.[r]||ANY?.nod?.[r]);  // nod = confirmed no direct flights
 // prices to use: direct-only when Direct only is on; a route not yet checked for direct flights uses all prices,
 // marked unchecked ("unc") so the cards say so and list it after the confirmed direct ones
 const serD=(r,direct,prev)=>direct&&!checked(r)?{m:series(r,'any',prev),unc:true}:{m:series(r,direct?'direct':'any',prev),unc:false};

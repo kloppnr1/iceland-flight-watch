@@ -120,6 +120,7 @@ const get=f=>fetch('data/'+f,{cache:'no-store'}).then(r=>r.ok?r.json():null).cat
 const JOBS=[
   {id:'google',name:'Google prices',what:'Cloud task, twice a day: calendars, then flight times for the next 60 days (up to 90 min).',stale:30,late:16},
   {id:'google-new',name:'Google prices, new airport',what:'Cloud task started when an airport is added: calendars for the new routes (about 10 min).',stale:30,late:null},
+  {id:'confirm',name:'Direct flights check',what:'Runs at the end of the Anywhere scan: confirms which routes really have direct flights and which have none (full flight lists for 4 days).',stale:30,late:null},
   {id:'anywhere',name:'Anywhere scan',what:'Cloud task, daily: all prices and direct-only prices to about 140 destinations (11–12 h).',stale:30,late:30},
 ];
 const STATE={running:['Running','run'],done:['Finished','ok'],failed:['Failed','bad'],stopped:['Stopped early','warn'],lost:['Ended without report','warn']};
@@ -169,7 +170,8 @@ async function load(){
   if(tAt.length){const c=ageCls(newest(tAt),30,54);if(c==='bad')problems.push(`No new flight times for ${ago(newest(tAt)).replace(' ago','')}.`);
     T+=tile('Flight times',ago(newest(tAt)),`${tAt.length} of ${st.length} routes have times · oldest ${ago(oldest(tAt))}`,c==='ok'?'':c);}
   if(A){const c=ageCls(A.updated,26,36);if(c==='bad')problems.push(`Anywhere prices last updated ${ago(A.updated)}.`);
-    T+=tile('Anywhere prices',ago(A.updated),`${Object.keys(A.cal||{}).length} routes with prices · ${Object.keys(A.dcal||{}).length} checked for direct`,c==='ok'?'':c);}
+    const nc=Object.keys(A.cal||{}).length,nd=Object.keys(A.cal||{}).filter(r=>A.dcal?.[r]).length,nn=Object.keys(A.cal||{}).filter(r=>A.nod?.[r]).length;
+    T+=tile('Anywhere prices',ago(A.updated),`${nc} routes · direct confirmed ${nd} · no direct confirmed ${nn} · not confirmed ${nc-nd-nn}`,c==='ok'?'':c);}
   else{problems.push('No Anywhere prices on the server.');T+=tile('Anywhere prices','None','anywhere.json could not be read','bad');}
   $('tiles').innerHTML=T;
 
@@ -192,17 +194,17 @@ async function load(){
   // anywhere coverage: how old each route's prices are, per home airport
   if(A){
     const cal=A.cal||{},dcal=A.dcal||{},B=[['Under 1 day',24,'var(--moss)'],['1–3 days',72,'var(--lupine)'],['3–7 days',Infinity,'var(--amber)']];
-    const cnt=[0,0,0],per={};
+    const cnt=[0,0,0],per={},nod=A.nod||{};
     for(const [r,c] of Object.entries(cal)){const h=H(c.at),i=h<=24?0:h<=72?1:2;cnt[i]++;
       const [o,d]=r.split('-'),home=['CPH','BLL','AAR','AAL','HAM','KEF'].includes(o)?o:d;const p=per[home]||(per[home]={n:0,d:0,old:null,f:0});
-      p.n++;if(dcal[r])p.d++;if(i===0)p.f++;if(!p.old||c.at<p.old)p.old=c.at;}
+      p.n++;if(dcal[r])p.d++;if(nod[r])p.x=(p.x||0)+1;if(i===0)p.f++;if(!p.old||c.at<p.old)p.old=c.at;}
     const tot=cnt.reduce((a,b)=>a+b,0)||1;
-    $('anywhere').innerHTML=`<div class="card"><div class="muted" style="font-size:14px">${Object.keys(cal).length} routes with prices, ${Object.keys(dcal).length} checked for direct flights · last upload ${fmtT(A.updated)}</div>
+    $('anywhere').innerHTML=`<div class="card"><div class="muted" style="font-size:14px">${Object.keys(cal).length} routes with prices · direct flights confirmed on ${Object.keys(cal).filter(r=>dcal[r]).length} · no direct flights confirmed on ${Object.keys(cal).filter(r=>nod[r]).length} · last upload ${fmtT(A.updated)}</div>
       <div class="stack" role="img" aria-label="${B.map((b,i)=>`${b[0]}: ${cnt[i]}`).join(', ')}">${B.map((b,i)=>`<i style="width:${100*cnt[i]/tot}%;background:${b[2]}"></i>`).join('')}</div>
       <div class="leg">${B.map((b,i)=>`<span><b style="background:${b[2]}"></b>${b[0]}: ${cnt[i]}</span>`).join('')}</div>
       <p class="note">Routes not refreshed for 7 days are dropped from the site.</p></div>
-      <div class="tw" style="margin-top:14px"><table><thead><tr><th>Home airport</th><th class="n">Routes</th><th class="n">Direct checked</th><th class="n">Updated last day</th><th>Oldest route</th></tr></thead><tbody>
-      ${Object.entries(per).sort().map(([k,p])=>`<tr><td>${esc(k)}</td><td class="n">${p.n}</td><td class="n">${p.d}</td><td class="n">${p.f}</td><td class="nw age ${ageCls(p.old,72,144)}">${ago(p.old)}</td></tr>`).join('')}</tbody></table></div>`;
+      <div class="tw" style="margin-top:14px"><table><thead><tr><th>Home airport</th><th class="n">Routes</th><th class="n">Direct confirmed</th><th class="n">No direct confirmed</th><th class="n">Updated last day</th><th>Oldest route</th></tr></thead><tbody>
+      ${Object.entries(per).sort().map(([k,p])=>`<tr><td>${esc(k)}</td><td class="n">${p.n}</td><td class="n">${p.d}</td><td class="n">${p.x||0}</td><td class="n">${p.f}</td><td class="nw age ${ageCls(p.old,72,144)}">${ago(p.old)}</td></tr>`).join('')}</tbody></table></div>`;
   }else $('anywhere').innerHTML='<p class="note">anywhere.json could not be read.</p>';
 
   // server self-check (health.py, every 5 minutes)
