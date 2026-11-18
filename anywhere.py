@@ -2,8 +2,10 @@
 worldwide, both ways, for the next 6 months (3 windows of 61 days, the most one fli call returns).
 The page shows the cheapest one-way ticket per destination, and round trips (out + home on the same airport)
 for a chosen number of days, from these day-by-day one-way prices.
-After all prices, a second pass gets the direct-only prices of every route (fli --stops 0), for the page's
-"Direct only" filter. A route with no flights at all is not looked up again for direct flights.
+Each route's direct-only prices (fli --stops 0, for the page's "Direct only" filter) are looked up right after its
+all-prices calendar, so they reach the page as the scan goes. A route with no flights at all is not looked up again
+for direct flights. Routes the site has no direct-only prices for, or the oldest prices, are scanned first, so a run
+that is stopped before the end still moves the whole list forward day by day.
 
 Results are saved to a local file after every lookup, so a stopped run continues where it stopped
 (within 20 hours; after that a run starts over).
@@ -45,9 +47,22 @@ def followed():
     return []
 
 
+def site_ages():
+    """When the site last got each route's prices: {route: oldest of (all prices, direct-only prices)}, '' = never."""
+    for site in SITES:
+        try:
+            a = json.load(urllib.request.urlopen(urllib.request.Request(site + '/data/anywhere.json', headers={'User-Agent': 'flight-watch-anywhere'}), timeout=60))
+            cal, dcal = a.get('cal') or {}, a.get('dcal') or {}
+            return {k: min(c.get('at', ''), (dcal.get(k) or {}).get('at', '')) for k, c in cal.items()}
+        except Exception as e:
+            print('could not read the Anywhere prices from', site, e, flush=True)
+    return {}
+
+
 FOLLOWED = [] if UPLOAD_ONLY else followed()
 DEST = FOLLOWED + [d for d in DEST if d not in FOLLOWED]
 print('followed airports in the scan:', FOLLOWED, flush=True)
+AGES = {} if UPLOAD_ONLY else site_ages()
 
 # A results file older than 20 hours belongs to an earlier run: start over so prices are fresh.
 # The run's start day is kept with it, so a restart after midnight continues the same date windows.
@@ -72,12 +87,15 @@ for o in HOME:
     for d in DEST:
         if o != d and not (o != 'KEF' and d in HOME) and (d, o) not in pairs:
             pairs.append((o, d))
-# all prices first (as before), then direct-only prices, so the main prices stay as fresh as they were
-jobs = [(x, y, a, b, k) for k in ('any', 'direct') for o, d in pairs for x, y in [(o, d), (d, o)] for a, b in wins]
+# followed airports first, then the pairs whose prices on the site are missing or oldest (either way)
+age = lambda o, d: min(AGES.get(f'{o}-{d}', ''), AGES.get(f'{d}-{o}', ''))
+pairs.sort(key=lambda p: (not (p[0] in FOLLOWED or p[1] in FOLLOWED), age(*p)))
+# one job = one route and one 61-day window: all prices, then direct-only prices
+jobs = [(x, y, a, b) for o, d in pairs for x, y in [(o, d), (d, o)] for a, b in wins]
 
 
-def lookup(j):
-    o, d, a, b, k = j
+def lookup(j, k):
+    o, d, a, b = j
     stops = ['--stops', '0'] if k == 'direct' else []
     for _ in range(2):
         try:
@@ -144,21 +162,33 @@ if UPLOAD_ONLY:
     sys.exit(0)
 
 found = {k: r for k, r in read_all().items() if r is not None}
-todo = [j for j in jobs if (j[0], j[1], str(j[2]), j[4]) not in found]
+key = lambda j, k: (j[0], j[1], str(j[2]), k)
+todo = [j for j in jobs if key(j, 'any') not in found or key(j, 'direct') not in found]
 lock = threading.Lock()
 pending, n, t0 = set(), [0], time.time()
 print(len(jobs), 'lookups,', len(todo), 'left', flush=True)
 
 
-def work(j):
-    # no flights at all in this window: no direct ones either, so no need to ask
-    r = [] if j[4] == 'direct' and found.get((j[0], j[1], str(j[2]), 'any')) == [] else lookup(j)
+def save(j, k, r):
     with lock:
+        found[key(j, k)] = r
+        with open(OUT, 'a') as f:
+            f.write(json.dumps({'j': list(key(j, k)), 'r': r}) + '\n')
+        pending.add((f'{j[0]}-{j[1]}', k))
+
+
+def work(j):
+    r = found.get(key(j, 'any'))
+    if r is None:
+        r = lookup(j, 'any')
         if r is not None:
-            found[(j[0], j[1], str(j[2]), j[4])] = r
-            with open(OUT, 'a') as f:
-                f.write(json.dumps({'j': [j[0], j[1], str(j[2]), j[4]], 'r': r}) + '\n')
-            pending.add((f'{j[0]}-{j[1]}', j[4]))
+            save(j, 'any', r)
+    if r is not None and key(j, 'direct') not in found:
+        # no flights at all in this window: no direct ones either, so no need to ask
+        rd = [] if r == [] else lookup(j, 'direct')
+        if rd is not None:
+            save(j, 'direct', rd)
+    with lock:
         n[0] += 1
         if n[0] % 25 == 0 or n[0] == len(todo):
             print(n[0], '/', len(todo), int(time.time() - t0), 's', flush=True)

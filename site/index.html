@@ -138,11 +138,14 @@ select,input[type=number],input[type=date],input[type=text],input[type=password]
 .leg{display:grid;grid-template-columns:52px 1fr auto;gap:2px 10px;align-items:baseline}
 .leg .w{font-size:12px;font-weight:600;color:var(--muted)}
 .leg .d{font-weight:600}
-.leg .r{color:var(--muted);font-size:13px;grid-column:2}
+.leg .r{color:var(--muted);font-size:13px;grid-column:2;display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center}
 .leg .p{grid-column:3;grid-row:1;text-align:right;font-weight:600}
 .leg .x{grid-column:3;grid-row:2;text-align:right}
 .tag{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:var(--r-sm);background:var(--sunk);color:var(--muted);white-space:nowrap}
 .tag.direct{background:var(--moss-soft);color:var(--moss)}
+.tag.stops{background:var(--sunk);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+.tag.unk{background:none;color:var(--muted);box-shadow:inset 0 0 0 1px var(--line);font-weight:500}
+.tag.alt{background:none;color:var(--moss);box-shadow:inset 0 0 0 1px var(--moss-soft)}
 .tag.src{font-weight:500}
 .chg{display:inline-block;font-size:13px;font-weight:700;padding:2px 9px;border-radius:var(--r-sm);white-space:nowrap}
 .chg.down{background:var(--moss-soft);color:var(--moss)}
@@ -222,6 +225,7 @@ h2{font-size:17px;margin:22px 0 10px;font-weight:700}
 .fl .st{grid-column:3;text-align:right;font-weight:600}
 
 .leg .fi{grid-column:2/-1;font-size:13px;color:var(--muted)}
+.leg .fi b{color:var(--ink);font-weight:600}
 .tm{font-weight:600;color:var(--ink)}.nd{font-size:10px;color:var(--ember);margin-left:1px;font-weight:700}
 .ft{margin-top:3px}
 .tag.bag{background:var(--lupine-soft);color:var(--lupine)}
@@ -316,10 +320,17 @@ const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v}catch
 const st={dest:(v=>isC(v)?'KEF':v)(lsGet('ifw_dest','KEF')),bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),mix:lsGet('ifw_rt_mix','1')==='1',anySort:lsGet('ifw_any_sort','price'),anyDest:(()=>{try{const v=JSON.parse(lsGet('ifw_any_dest','[]'));return Array.isArray(v)?v.map(String).filter(k=>!isC(k)):[]}catch(e){return []}})(),minM:1,maxM:6,unit:lsGet('ifw_stay_unit','m'),minD:30,maxD:182,stops:lsGet('ifw_direct','1')==='1'?'direct':'any',from:'',to:'',maxp:'',
   route:'ALL-'+(v=>isC(v)?'KEF':v)(lsGet('ifw_dest','KEF')),kind:'direct',chDir:'both',chWhat:'drops',limit:40,open:matchMedia('(min-width:900px)').matches};
 
-function series(route,kind,prev){const src=prev?L.prev_cal:L.cal;let c=src?.[route]?.[kind];
+const SER=new Map();  // data is loaded once, so each route's series is built once
+function series(route,kind,prev){const key=route+'|'+kind+'|'+(prev?1:0);if(!SER.has(key))SER.set(key,series0(route,kind,prev));return SER.get(key);}
+function series0(route,kind,prev){const src=prev?L.prev_cal:L.cal;let c=src?.[route]?.[kind];
   // route without Google checks of its own: the Anywhere scan's prices (no earlier check to compare with, so "prev" is the same)
   if(!L.cal?.[route]){const A=kind==='direct'?ANY?.dcal:ANY?.cal;if(A?.[route])c=A[route];}const m=new Map();if(!c)return m;let d=c.start;c.p.forEach(v=>{if(v)m.set(d,v);d=add(d,1)});return m;}
 const hasPrev=()=>!!L.prev_cal;
+// has this route been checked for direct flights? (followed: the twice-daily checks; others: the Anywhere scan)
+const checked=r=>!!(L.cal?.[r]||ANY?.dcal?.[r]);
+// prices to use: direct-only when Direct only is on; a route not yet checked for direct flights uses all prices,
+// marked unchecked ("unc") so the cards say so and list it after the confirmed direct ones
+const serD=(r,direct,prev)=>direct&&!checked(r)?{m:series(r,'any',prev),unc:true}:{m:series(r,direct?'direct':'any',prev),unc:false};
 function chg(now,prev){if(!hasPrev())return '';if(prev==null)return '<span class="chg new">New</span>';
   if(now<prev)return `<span class="chg down" title="Was ${KR(prev)} at the last check">▼ ${KR(prev-now)}</span>`;
   if(now>prev)return `<span class="chg up" title="Was ${KR(prev)} at the last check">▲ ${KR(now-prev)}</span>`;return '';}
@@ -415,11 +426,21 @@ const timesTxt=(x,date)=>x&&x.dep?`${x.dep}–${x.arr}${x.arr_day&&x.arr_day>dat
 const detTxt=(x,date)=>x?[timesTxt(x,date),dur(x.min),stopsTxt(x.stops),x.al].filter(Boolean).join(', '):'';
 const bagFee=x=>{if(!st.bag)return 0;const def=BAGS?.default??350;const al=x?.al?String(x.al).split(',')[0].trim():'';const v=al?BAGS?.airlines?.[al]:undefined;return v==null?def:v;};
 const bagTag=fee=>fee?`<span class="tag bag">+${KR(fee)} bag</span>`:'';
-function legHTML(label,o,d,date,fare,x,extra){
-  const fee=bagFee(x);
+// Direct or stops for the cheapest flight that day: exact from the flight times when there are some, otherwise
+// from the direct-only prices (the cheapest fare is direct when it equals the direct-only fare that day).
+function stopBadge(o,d,date,fare,x,direct,unc){
+  const r=`${o}-${d}`,alt=dp=>dp&&dp!==fare?` <span class="tag alt" title="Cheapest direct flight that day">Direct ${KR(dp)}</span>`:'';
+  if(x&&x.stops!=null)return x.stops?`<span class="tag stops">${stopsTxt(x.stops)}</span>${direct?'':alt(series(r,'direct').get(date))}`:'<span class="tag direct">Direct</span>';
+  if(unc||!checked(r))return `<span class="tag unk" title="This route has not been checked for direct flights yet. The Anywhere scan adds it during the day.">${direct?'Direct not checked yet':'Stops not known yet'}</span>`;
+  if(direct)return '<span class="tag direct">Direct</span>';
+  const dp=series(r,'direct').get(date);
+  return dp===fare?'<span class="tag direct">Direct</span>':`<span class="tag stops">With stops</span>${alt(dp)}`;
+}
+function legHTML(label,o,d,date,fare,x,direct=DIRECT(),unc=false){
+  const fee=bagFee(x),info=x?[x.dep?`<b class="tm">${times(x,date)}</b>`:'',x.min!=null?`<b>${dur(x.min)}</b>`:'',esc(x.al)].filter(Boolean).join(' · '):'';
   return `<div class="leg"><span class="w">${label}</span><span class="d">${fd(date)}</span><span class="p">${KR(fare+fee)}</span>
-  <span class="r">${o} → ${d}${x&&x.dep?`, <b class="tm">${times(x,date)}</b>`:''}</span><span class="x">${bagTag(fee)||extra||''}</span>
-  ${x?`<span class="fi">${[dur(x.min),stopsTxt(x.stops),esc(x.al)].filter(Boolean).join(', ')}</span>`:''}</div>`;
+  <span class="r">${o} → ${d} ${stopBadge(o,d,date,fare,x,direct,unc)}</span><span class="x">${bagTag(fee)}</span>
+  ${info?`<span class="fi">${info}</span>`:''}</div>`;
 }
 const bagSw=()=>`<label class="sw"><input type="checkbox" id="bagSw" ${st.bag?'checked':''}>With checked bag</label>`;
 const bagNote=()=>st.bag?`<p class="bagnote">Prices include one checked bag per flight. ${esc(BAGS?.note||'')}</p>`:'';
@@ -427,38 +448,37 @@ const inclBag=()=>st.bag?'<span class="target">incl. bag (est.)</span>':'';
 
 // ---------- round trips ----------
 function trips(){
-  const direct=DIRECT(),kind=direct?'direct':'any',[minD,maxD]=stayDays(),today=iso(new Date());
+  const direct=DIRECT(),[minD,maxD]=stayDays(),today=iso(new Date());
   const rows=[];
-  for(const K of DCODES())for(const o of st.out){if(o===K)continue;const A=series(`${o}-${K}`,kind);if(!A.size)continue;const Ad=direct?A:series(`${o}-${K}`,'direct'),Ap=series(`${o}-${K}`,kind,true);
-    for(const h of st.mix?[...st.home].filter(x=>x!==K&&(x==='KEF')===(o==='KEF')):[o]){const B=series(`${K}-${h}`,kind);if(!B.size)continue;const Bd=direct?B:series(`${K}-${h}`,'direct'),Bp=series(`${K}-${h}`,kind,true);
+  for(const K of DCODES())for(const o of st.out){if(o===K)continue;const SA=serD(`${o}-${K}`,direct),A=SA.m;if(!A.size)continue;const Ap=serD(`${o}-${K}`,direct,true).m;
+    for(const h of st.mix?[...st.home].filter(x=>x!==K&&(x==='KEF')===(o==='KEF')):[o]){const SB=serD(`${K}-${h}`,direct),B=SB.m;if(!B.size)continue;const Bp=serD(`${K}-${h}`,direct,true).m;
       const bArr=[...B.entries()].sort().map(([d,p])=>{const x=det(K,h,d,direct);return [d,p,x,p+bagFee(x)]});
       for(const [d1,p1] of A){if(d1<today||(st.from&&d1<st.from)||(st.to&&d1>st.to))continue;
         let best=null;for(const e of bArr){const n=days(d1,e[0]);if(n<minD)continue;if(n>maxD)break;if(!best||e[3]<best[3])best=e;}
         if(!best)continue;const [d2,p2,x2,a2]=best,x1=det(o,K,d1,direct),a1=p1+bagFee(x1);
-        rows.push({k:K,o,h,d1,d2,p1,p2,x1,x2,fare:p1+p2,total:a1+a2,stay:days(d1,d2),dir1:Ad.get(d1),dir2:Bd.get(d2),prev:(Ap.get(d1)&&Bp.get(d2))?Ap.get(d1)+Bp.get(d2):null});}
+        rows.push({k:K,o,h,d1,d2,p1,p2,x1,x2,fare:p1+p2,total:a1+a2,stay:days(d1,d2),u1:SA.unc,u2:SB.unc,unc:SA.unc||SB.unc,prev:(Ap.get(d1)&&Bp.get(d2))?Ap.get(d1)+Bp.get(d2):null});}
     }}
-  const mx=+st.maxp||Infinity;return rows.filter(r=>r.total<=mx).sort((a,b)=>a.total-b.total);
+  const mx=+st.maxp||Infinity;return rows.filter(r=>r.total<=mx).sort((a,b)=>a.unc-b.unc||a.total-b.total);
 }
-const dirTag=(d,p)=>DIRECT()?'':d?(d===p?'':`<span class="tag direct">Direct ${KR(d)}</span>`):'';
 function rtCard(r,best){
-  const direct=DIRECT(),flag=best?'<div class="flag">Cheapest right now</div>':'';
+  const direct=DIRECT(),flag=best?`<div class="flag">${r.unc?'Cheapest, direct not checked':'Cheapest right now'}</div>`:'';
   const ft=r.x1?.min!=null&&r.x2?.min!=null?`<div class="sub ft">${dur(r.x1.min+r.x2.min)} flying in total</div>`:'';
   return `<article class="card${best?' best':''}"><div class="top"><div><div class="head">${r.stay} days in ${esc(PLACE())}</div><div class="sub">${isC(DST())?esc(nm(r.k))+' · ':''}${nm(r.o)} out, ${nm(r.h)} home</div>${ft}</div><div class="pr">${flag}<div class="price">${kr(r.total)}<small>kr</small></div>${inclBag()}${chg(r.fare,r.prev)}</div></div>
-  <div class="legs">${legHTML('Out',r.o,r.k,r.d1,r.p1,r.x1,dirTag(r.dir1,r.p1))}${legHTML('Home',r.k,r.h,r.d2,r.p2,r.x2,dirTag(r.dir2,r.p2))}</div>
+  <div class="legs">${legHTML('Out',r.o,r.k,r.d1,r.p1,r.x1,direct,r.u1)}${legHTML('Home',r.k,r.h,r.d2,r.p2,r.x2,direct,r.u2)}</div>
   <div class="links">${lnk(gf(r.o,r.k,r.d1,direct),'Out flight')}${lnk(gf(r.k,r.h,r.d2,direct),'Home flight')}${r.o===r.h?lnk(gfRT(r.o,r.d1,r.d2,direct,r.k),'Round trip','main'):''}</div></article>`;
 }
-// Direct only, but no direct-only prices for this destination yet (not followed, and no Anywhere scan with the direct pass yet)
-const noDirectYet=()=>DIRECT()&&!DCODES().some(k=>followed(k)||Object.keys(ANY?.dcal||{}).some(r=>r.split('-').includes(k)))
-  ?empty(`No direct-only prices for ${esc(nm(DST()))} yet.`,'They come with the next Anywhere scan (once a day). Turn off Direct only to see all prices.'):'';
+// Direct only, with routes not yet checked for direct flights among the results: say so above the list
+const uncNote=(rows,what)=>{const n=rows.filter(r=>r.unc).length;if(!n)return '';
+  return `<p class="srcnote">${n===rows.length?`None of these ${what} have been checked for direct flights yet, so the prices may include stops`:`${n} of these ${what} have not been checked for direct flights yet. They are marked and listed after the confirmed direct ones`}. The Anywhere scan checks them during the day.</p>`};
 function renderTrips(){
   if(isAny(DST()))return renderAny();
   if(st.type==='ow')return renderOneWay();
   const all=trips();
-  if(!all.length){$('view').innerHTML=noData()||noDirectYet()||empty('No round trips match these filters.',DIRECT()?'Try turning off Direct only, or widen the stay or dates.':'Try more airports, a longer stay or a wider date range.');return;}
+  if(!all.length){$('view').innerHTML=noData()||empty('No round trips match these filters.',DIRECT()?'Try turning off Direct only, or widen the stay or dates.':'Try more airports, a longer stay or a wider date range.');return;}
   // keep the cheapest trip per departure week + airport pair so the list is varied
   const seen=new Set(),rows=[];for(const r of all){const k=r.k+r.o+r.h+r.d1.slice(0,8)+Math.floor(+r.d1.slice(8)/8);if(seen.has(k))continue;seen.add(k);rows.push(r);if(rows.length>=150)break;}
   const shown=rows.slice(0,st.limit);
-  $('view').innerHTML=srcNote()+`<div class="lead"><span>${rows.length} trips, cheapest per week of departure</span><span>Total price for 1 adult${st.bag?', with bags':''}</span></div>
+  $('view').innerHTML=srcNote()+uncNote(rows,'trips')+`<div class="lead"><span>${rows.length} trips, cheapest per week of departure</span><span>Total price for 1 adult${st.bag?', with bags':''}</span></div>
   <div class="list two">${shown.map((r,i)=>rtCard(r,i===0)).join('')}</div>${moreBtn(shown.length,rows.length)}
   <p class="note">Each trip adds the cheapest one-way fare out to the cheapest one-way fare home, found on ${srcName()}. Open the links to see the exact flights.</p>`;
   wireMore();
@@ -466,25 +486,23 @@ function renderTrips(){
 
 // ---------- one way ----------
 function oneway(){
-  const direct=DIRECT(),kind=direct?'direct':'any',today=iso(new Date()),rows=[];
+  const direct=DIRECT(),today=iso(new Date()),rows=[];
   for(const K of DCODES())for(const a of st.owApt){if(a===K)continue;const o=st.owDir==='to'?a:K,d=st.owDir==='to'?K:a,route=`${o}-${d}`;
-    const S=series(route,kind);if(!S.size)continue;const P=series(route,kind,true),Dd=direct?S:series(route,'direct');
-    for(const [date,p] of S){if(date<today||(st.from&&date<st.from)||(st.to&&date>st.to))continue;const x=det(o,d,date,direct);rows.push({o,d,date,p,x,total:p+bagFee(x),prev:P.get(date),dirp:Dd.get(date)});}}
-  const mx=+st.maxp||Infinity;return rows.filter(r=>r.total<=mx).sort((a,b)=>a.total-b.total||a.date.localeCompare(b.date));
+    const SS=serD(route,direct),S=SS.m;if(!S.size)continue;const P=serD(route,direct,true).m;
+    for(const [date,p] of S){if(date<today||(st.from&&date<st.from)||(st.to&&date>st.to))continue;const x=det(o,d,date,direct);rows.push({o,d,date,p,x,total:p+bagFee(x),prev:P.get(date),unc:SS.unc});}}
+  const mx=+st.maxp||Infinity;return rows.filter(r=>r.total<=mx).sort((a,b)=>a.unc-b.unc||a.total-b.total||a.date.localeCompare(b.date));
 }
 function owCard(r,best){
-  const direct=DIRECT(),flag=best?'<div class="flag">Cheapest right now</div>':'',fee=bagFee(r.x);
-  const tag=direct&&!r.x?'<span class="tag direct">Direct</span>':dirTag(r.dirp,r.p);
+  const direct=DIRECT(),flag=best?`<div class="flag">${r.unc?'Cheapest, direct not checked':'Cheapest right now'}</div>`:'';
   return `<article class="card${best?' best':''}"><div class="top"><div><div class="head">${fd(r.date)}</div><div class="sub">${nm(r.o)} → ${nm(r.d)}</div></div><div class="pr">${flag}<div class="price">${kr(r.total)}<small>kr</small></div>${inclBag()}${chg(r.p,r.prev)}</div></div>
-  ${r.x?`<div class="legs"><div class="leg"><span class="d tm" style="grid-column:1/3">${r.o} → ${r.d}, ${times(r.x,r.date)}</span><span class="x" style="grid-row:1">${bagTag(fee)}</span><span class="fi" style="grid-column:1/-1">${[dur(r.x.min),stopsTxt(r.x.stops),esc(r.x.al)].filter(Boolean).join(', ')}</span></div></div>`
-   :`<div class="legs"><div class="leg"><span class="w">${r.o} → ${r.d}</span><span class="d"></span><span class="x" style="grid-row:1">${bagTag(fee)} ${tag}</span></div></div>`}
+  <div class="legs">${legHTML('Flight',r.o,r.d,r.date,r.p,r.x,direct,r.unc)}</div>
   <div class="links">${lnk(gf(r.o,r.d,r.date,direct),'Open in Google Flights','main')}</div></article>`;
 }
 function renderOneWay(){
   const rows=oneway();
-  if(!rows.length){$('view').innerHTML=noData()||noDirectYet()||empty('No flights match these filters.',DIRECT()?'Some airports have no direct flights. Try turning off Direct only.':'Try more airports or a wider date range.');return;}
+  if(!rows.length){$('view').innerHTML=noData()||empty('No flights match these filters.',DIRECT()?'Some airports have no direct flights. Try turning off Direct only.':'Try more airports or a wider date range.');return;}
   const shown=rows.slice(0,st.limit);
-  $('view').innerHTML=srcNote()+`<div class="lead"><span>${rows.length} flights ${st.owDir==='to'?'to':'from'} ${esc(PLACE())}, cheapest first</span><span>One-way price for 1 adult${st.bag?', with bag':''}</span></div>
+  $('view').innerHTML=srcNote()+uncNote(rows,'flights')+`<div class="lead"><span>${rows.length} flights ${st.owDir==='to'?'to':'from'} ${esc(PLACE())}, cheapest first</span><span>One-way price for 1 adult${st.bag?', with bag':''}</span></div>
   <div class="list two">${shown.map((r,i)=>owCard(r,i===0)).join('')}</div>${moreBtn(shown.length,rows.length)}
   <p class="note">Prices are the cheapest one-way fare that day on ${srcName()}.</p>`;
   wireMore();
@@ -548,49 +566,50 @@ function anyDestPick(){
 }
 const anyDestOk=d=>!st.anyDest.length||st.anyDest.includes(d);
 function anyRows(){
-  const direct=DIRECT(),kind=direct?'direct':'any',t=iso(new Date()),rt=st.type==='rt',[minD,maxD]=stayDays();
+  const direct=DIRECT(),t=iso(new Date()),rt=st.type==='rt',[minD,maxD]=stayDays();
   const i0=Math.max(0,st.from?days(t,st.from):0),i1=st.to?days(t,st.to):1e4;
-  const arr=r=>{const a=[];series(r,kind).forEach((p,d)=>{const i=days(t,d);if(i>=0)a[i]=p});return a};  // day 0 = today
+  // day 0 = today; .unc = Direct only, but the route is not checked for direct flights yet (all prices used)
+  const arr=r=>{const S=serD(r,direct),a=[];S.m.forEach((p,d)=>{const i=days(t,d);if(i>=0)a[i]=p});a.unc=S.unc;return a};
   const orig=rt?[...st.out]:[...st.owApt],best={};
+  // a destination's trip on confirmed direct routes beats one on unchecked routes, then the lowest fare wins
+  const better=(K,unc,f)=>!best[K]||unc<best[K].unc||unc===best[K].unc&&f<best[K].fare;
   for(const K of anyDests()){if(orig.includes(K)||!anyDestOk(K))continue;
     if(!rt){
       for(const x of orig){const o=st.owDir==='to'?x:K,d=st.owDir==='to'?K:x,A=arr(`${o}-${d}`);
-        for(let i=i0;i<=i1&&i<A.length;i++){const p=A[i];if(p&&(!best[K]||p<best[K].fare))best[K]={o,d,i,fare:p,A};}}
+        for(let i=i0;i<=i1&&i<A.length;i++){const p=A[i];if(p&&better(K,A.unc,p))best[K]={o,d,i,fare:p,A,unc:A.unc};}}
       continue;}
     // round trip: out on day i, home on the cheapest day j with stay j-i within the chosen stay
     // (the cheapest home price in that window, kept with a sliding-window minimum)
     for(const o of orig){const A=arr(`${o}-${K}`);if(!A.length)continue;
       for(const h of st.mix?[...st.home].filter(x=>x!==K&&(x==='KEF')===(o==='KEF')):[o]){const B=arr(`${K}-${h}`);if(!B.length)continue;
-        const q=[];let qh=0,jn=0;
+        const unc=A.unc||B.unc,q=[];let qh=0,jn=0;
         for(let i=i0;i<=i1&&i<A.length;i++){const p1=A[i];if(!p1)continue;
           for(jn=Math.max(jn,i+minD);jn<=i+maxD&&jn<B.length;jn++){const v=B[jn];if(!v)continue;while(q.length>qh&&B[q[q.length-1]]>=v)q.pop();q.push(jn);}
           while(qh<q.length&&q[qh]<i+minD)qh++;if(qh>=q.length)continue;
-          const j=q[qh],f=p1+B[j];if(!best[K]||f<best[K].fare)best[K]={o,h,i,j,p1,p2:B[j],fare:f,A,B};}}}
+          const j=q[qh],f=p1+B[j];if(better(K,unc,f))best[K]={o,h,i,j,p1,p2:B[j],fare:f,A,B,unc,u1:A.unc,u2:B.unc};}}}
   }
   // what matters besides the price: how it compares with the route's usual price, how many days have it, how soon it leaves
   const med=a=>{const v=a.filter(Boolean).sort((x,y)=>x-y);return v.length>=14?v[v.length>>1]:null};
   const rows=[];
   for(const [K,b] of Object.entries(best)){const a=ANYAP[K],date=add(t,b.i);let r;
     if(rt){const back=add(t,b.j),x1=det(b.o,K,date,direct),x2=det(K,b.h,back,direct);
-      r={k:K,o:b.o,h:b.h,date,back,n:b.j-b.i,p1:b.p1,p2:b.p2,fare:b.fare,total:b.p1+bagFee(x1)+b.p2+bagFee(x2)};
+      r={k:K,o:b.o,h:b.h,date,back,n:b.j-b.i,p1:b.p1,p2:b.p2,x1,x2,u1:b.u1,u2:b.u2,fare:b.fare,total:b.p1+bagFee(x1)+b.p2+bagFee(x2)};
       const m1=med(b.A),m2=med(b.B);if(m1&&m2)r.usual=m1+m2;}
-    else{r={k:K,o:b.o,d:b.d,date,fare:b.fare,total:b.fare+bagFee(det(b.o,b.d,date,direct))};const m=med(b.A);if(m)r.usual=m;
+    else{const x=det(b.o,b.d,date,direct);r={k:K,o:b.o,d:b.d,date,x,fare:b.fare,total:b.fare+bagFee(x)};const m=med(b.A);if(m)r.usual=m;
       r.near=b.A.filter(v=>v&&v<=b.fare*1.1).length-1;}
     if(r.usual)r.save=Math.round(100*(1-r.fare/r.usual));
-    r.city=a?a[2]||a[1]:nm(K);r.country=a?a[3]:'';r.lead=b.i;rows.push(r);}
+    r.city=a?a[2]||a[1]:nm(K);r.country=a?a[3]:'';r.lead=b.i;r.unc=b.unc;rows.push(r);}
   const mx=+st.maxp||Infinity,byP=(a,b)=>a.total-b.total;
   const band=v=>v==null?-99:Math.floor(v/10);  // price stays a priority: savings in steps of 10 %, departures week by week, cheapest first within each
   const SORT={price:byP,save:(a,b)=>band(b.save)-band(a.save)||byP(a,b),soon:(a,b)=>Math.floor(a.lead/7)-Math.floor(b.lead/7)||byP(a,b),
     az:(a,b)=>a.country.localeCompare(b.country)||byP(a,b)};
-  return rows.filter(r=>r.total<=mx).sort(SORT[st.anySort]||byP);
+  const by=SORT[st.anySort]||byP;return rows.filter(r=>r.total<=mx).sort((a,b)=>a.unc-b.unc||by(a,b));
 }
 function renderAny(){
   const direct=DIRECT(),rt=st.type==='rt';
   if(!ANY){$('view').innerHTML=empty('No anywhere prices yet.','They are added while the Anywhere scan runs (once a day).');return;}
   const rows=anyRows();
-  if(!rows.length){$('view').innerHTML=direct&&!Object.keys(ANY.dcal||{}).length
-    ?empty('No direct-only prices yet.','They come with the next Anywhere scan (once a day). Turn off Direct only to see all prices.')
-    :empty('Nothing matches these filters.',`Try ${direct?'turning off Direct only, ':''}more airports, ${rt?'a longer stay, ':''}a wider date range or a higher max price.`);return;}
+  if(!rows.length){$('view').innerHTML=empty('Nothing matches these filters.',`Try ${direct?'turning off Direct only, ':''}more airports, ${rt?'a longer stay, ':''}a wider date range or a higher max price.`);return;}
   const inTxt=n=>n<=0?'today':n===1?'tomorrow':n<14?`in ${n} days`:n<60?`in ${Math.round(n/7)} weeks`:`in ${Math.round(n/30.4)} months`;
   const why=r=>{const x=[];
     if(r.save>=15)x.push(`<span class="tag direct">${r.save}% under usual</span>`);
@@ -602,10 +621,10 @@ function renderAny(){
   const shown=rows.slice(0,st.limit);
   const what=rt?`cheapest ${direct?'direct ':''}round trip, ${stayTxt()} away`:`cheapest ${direct?'direct ':''}one-way ticket ${st.owDir==='to'?'there':'home'}`;
   const srt=st.anySort==='save'?', best deals first':st.anySort==='soon'?', week by week, cheapest first in each week':st.anySort==='az'?', by country':'';
-  $('view').innerHTML=`<div class="lead"><span>${rows.length} destination${rows.length===1?'':'s'}, ${what}${srt}</span><span>Updated ${new Date(ANY.updated).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}${st.bag?', with bags':''}</span></div><div class="list two">${shown.map(r=>{const K=r.k,city=r.city;
+  $('view').innerHTML=uncNote(rows,'destinations')+`<div class="lead"><span>${rows.length} destination${rows.length===1?'':'s'}, ${what}${srt}</span><span>Updated ${new Date(ANY.updated).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}${st.bag?', with bags':''}</span></div><div class="list two">${shown.map(r=>{const K=r.k,city=r.city;
     const sub=rt?`${esc(nm(r.o))}${r.h!==r.o?', home to '+esc(nm(r.h)):''}, ${fd(r.date)} → ${fd(r.back)}, ${r.n} day${r.n===1?'':'s'}`:r.o===K?`to ${esc(nm(r.d))}, ${fd(r.date)}`:`from ${esc(nm(r.o))}, ${fd(r.date)}`;
     return `<article class="card"><div class="top"><div><div class="head">${esc(city)} (${esc(K)})</div><div class="sub">${r.country?esc(r.country)+' · ':''}${sub}</div></div><div class="pr"><div class="price">${kr(r.total)}<small>kr</small></div>${inclBag()}</div></div>
-    ${rt?`<div class="sub" style="margin-top:6px">Out ${KR(r.p1)} + home ${KR(r.p2)}, two one-way tickets${direct?', direct':''}</div>`:direct?'<div class="sub" style="margin-top:6px">Direct</div>':''}${why(r)}
+    <div class="legs">${rt?legHTML('Out',r.o,K,r.date,r.p1,r.x1,direct,r.u1)+legHTML('Home',K,r.h,r.back,r.p2,r.x2,direct,r.u2):legHTML('Flight',r.o,r.d,r.date,r.fare,r.x,direct,r.unc)}</div>${why(r)}
     <div class="links">${rt?lnk(gf(r.o,K,r.date,direct),'Out')+lnk(gf(K,r.h,r.back,direct),'Home')+(r.h===r.o?lnk(gfRT(r.o,r.date,r.back,direct,K),'As round trip'):''):lnk(gf(r.o,r.d,r.date,direct),'Open in Google Flights')}<a href="#" class="main" data-open="${esc(K)}">All prices for ${esc(city)}</a>${destOf(K)?''
       :`<a href="#" data-follow="${esc(K)}" title="Add to your airports: Google prices twice a day, flight times, changes, patterns">Follow</a>`}</div></article>`}).join('')}</div>${moreBtn(shown.length,rows.length)}
   <p class="note">Prices from Google Flights: the Anywhere scan (once a day), and twice-daily checks for your airports. Round trips add the cheapest one-way fare out to the cheapest one-way fare home.</p>`;
@@ -745,7 +764,7 @@ function watchCard(w){
     <div class="sub">${fdd(w.from)} to ${fdd(w.to)}, stay ${w.min_days}–${w.max_days} days</div>
     <div class="sub" style="margin-top:4px">${dir?'<span class="tag direct">Direct only</span>':'<span class="tag">Any flights</span>'} <span class="tag">${esc((w.out||[]).join(', '))} out</span> <span class="tag">${esc((w.home||[]).join(', '))} home</span></div></div>
     <div class="pr">${b?`<div class="price"${w.good?' style="color:var(--moss)"':''}>${kr(tot)}<small>kr</small></div>${inclBag()}`:'<div class="sub">No price yet</div>'}${ch}${w.target?`<span class="target">Good enough at ${KR(w.target)}</span>`:''}</div></div>`;
-  const legs=b?`<div class="sub" style="margin-top:12px">Best trip now: ${b.days} days in ${esc(PLACE())}${x1?.min!=null&&x2?.min!=null?`, ${dur(x1.min+x2.min)} flying in total`:''}</div><div class="legs" style="margin-top:6px">${legHTML('Out',b.o,K,b.d1,b.p1,x1)}${legHTML('Home',K,b.h,b.d2,b.p2,x2)}</div>
+  const legs=b?`<div class="sub" style="margin-top:12px">Best trip now: ${b.days} days in ${esc(PLACE())}${x1?.min!=null&&x2?.min!=null?`, ${dur(x1.min+x2.min)} flying in total`:''}</div><div class="legs" style="margin-top:6px">${legHTML('Out',b.o,K,b.d1,b.p1,x1,dir)}${legHTML('Home',K,b.h,b.d2,b.p2,x2,dir)}</div>
     <div class="links">${lnk(gf(b.o,K,b.d1,dir),'Out flight')}${lnk(gf(K,b.h,b.d2,dir),'Home flight')}${b.o===b.h?lnk(gfRT(b.o,b.d1,b.d2,dir),'Round trip','main'):''}</div>`
     :`<p class="sub" style="margin:12px 0 0">No trip fits this window right now. It is checked again with every price check.</p>`;
   const sp=spark(w.history||[],w.target);
