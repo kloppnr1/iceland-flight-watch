@@ -14,8 +14,9 @@ POST   /api/anywhere         -> prices to anywhere from the "anywhere" scan (hea
                                 (older form: {"rows": [[FROM, TO, "YYYY-MM-DD", price], ...]}). Each route sent is
                                 replaced; other routes are kept. Written to data/anywhere.json:
                                 routes = cheapest day per route [date, price, updated], cal = day-by-day prices.
-                                "dcal" (same form) = direct-only day-by-day prices; an empty "p" means the route
-                                was checked and has no direct flights. Kept as dcal in data/anywhere.json.
+                                "dcal" (same form) = direct-only day-by-day prices, kept as dcal in data/anywhere.json.
+                                Calendars without any price are ignored (Google often answers empty although there
+                                are flights), so a route keeps its earlier prices.
 POST   /api/jobs             -> progress of a download job (jobreport.py; header X-Upload-Token):
                                 {"job", "run", "state": running|done|failed|stopped, "phase", "done", "total",
                                  "note", "errors", "last_error"}. Written to data/jobs.json for admin.html:
@@ -321,21 +322,24 @@ class H(BaseHTTPRequestHandler):
             today = str(datetime.date.today())
             routes = {k: v for k, v in cur.get('routes', {}).items() if v[0] >= today}  # drop passed dates
             cal, dcal = cur.get('cal', {}), cur.get('dcal', {})
+            # Google often answers a search with an empty list although the route has flights (seen on half the
+            # searches for CPH-LHR, 18 Nov), so an empty calendar proves nothing: it is ignored and the route keeps
+            # what it had. Only calendars with prices are stored.
             for k, c in dcals.items():
-                dcal[k] = {**c, 'at': now}
+                if any(c['p']):
+                    dcal[k] = {**c, 'at': now}
             for k, (day, p) in new.items():
                 routes[k] = [day, p, now]
             for k, c in cals.items():
-                cal[k] = {**c, 'at': now}
-                if k not in new:  # no prices at all now: the route has no flights in the next 6 months
-                    routes.pop(k, None)
+                if any(c['p']):
+                    cal[k] = {**c, 'at': now}
             # drop what no scan has refreshed for a week (a destination taken off the scan list) and passed calendars
             old = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)).isoformat(timespec='seconds')
             routes = {k: v for k, v in routes.items() if len(v) < 3 or v[2] >= old}
             last_day = lambda c: str(datetime.date.fromisoformat(c['start']) + datetime.timedelta(days=len(c['p']) - 1))
             cal = {k: c for k, c in cal.items() if c.get('at', now) >= old and last_day(c) >= today}
-            # direct: an empty calendar ("no direct flights") is kept until a week old, like the rest
-            dcal = {k: c for k, c in dcal.items() if c.get('at', now) >= old and (not c['p'] or last_day(c) >= today)}
+            # direct: only calendars with prices (earlier "no direct flights" entries were often Google's empty answers)
+            dcal = {k: c for k, c in dcal.items() if c.get('at', now) >= old and any(c['p']) and last_day(c) >= today}
             json.dump({'updated': now, 'routes': routes, 'cal': cal, 'dcal': dcal}, open(path + '.tmp', 'w'), separators=(',', ':'))
             os.replace(path + '.tmp', path)
         self.reply(200, {'saved': len(new), 'routes': len(routes)})

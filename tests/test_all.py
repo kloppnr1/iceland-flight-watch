@@ -71,18 +71,21 @@ class Api(unittest.TestCase):
         self.assertEqual((code, r['saved']), (200, 2))
         d = json.load(open(os.path.join(os.environ['DATA_DIR'], 'anywhere.json')))
         self.assertEqual(d['routes']['CPH-EDI'][:2], [DAY(3), 113])  # cheapest day
-        self.assertNotIn('CPH-XXX', d['routes'])  # no flights
+        self.assertNotIn('CPH-XXX', d['cal'])  # an empty answer is not stored
         self.assertEqual(d['cal']['CPH-EDI']['p'], [400, 0, 113, 250])
         # a later upload of another route keeps this one; the older rows form still works
         call('POST', '/api/anywhere', {'rows': [['BLL', 'GDN', DAY(5), 119]]}, **{'X-Upload-Token': 'tok'})
         d = json.load(open(os.path.join(os.environ['DATA_DIR'], 'anywhere.json')))
         self.assertEqual(sorted(d['routes']), ['BLL-GDN', 'CPH-EDI', 'EDI-CPH'])
-        # direct-only calendars: kept apart, and an empty one means "no direct flights" (kept, not dropped)
+        # direct-only calendars: kept apart; an empty one is ignored (Google often answers empty), the earlier one stays
         code, r = call('POST', '/api/anywhere', {'dcal': {'CPH-EDI': cal(DAY(1), [0, 450]), 'CPH-SYD': cal(DAY(1), [])}}, **{'X-Upload-Token': 'tok'})
         self.assertEqual(code, 200)
         d = json.load(open(os.path.join(os.environ['DATA_DIR'], 'anywhere.json')))
         self.assertEqual(d['dcal']['CPH-EDI']['p'], [0, 450])
-        self.assertEqual(d['dcal']['CPH-SYD']['p'], [])
+        self.assertNotIn('CPH-SYD', d['dcal'])
+        call('POST', '/api/anywhere', {'dcal': {'CPH-EDI': cal(DAY(1), [])}, 'cal': {'CPH-EDI': cal(DAY(1), [0])}}, **{'X-Upload-Token': 'tok'})
+        d = json.load(open(os.path.join(os.environ['DATA_DIR'], 'anywhere.json')))
+        self.assertEqual((d['dcal']['CPH-EDI']['p'], d['cal']['CPH-EDI']['p']), ([0, 450], [400, 0, 113, 250]))
         self.assertEqual(d['routes']['CPH-EDI'][:2], [DAY(3), 113])  # direct prices do not change the cheapest day
 
     def test_anywhere_cleanup(self):
