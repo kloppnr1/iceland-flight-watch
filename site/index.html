@@ -42,6 +42,18 @@ h1 .k i::before{content:"";position:absolute;right:100%;top:55%;width:34px;heigh
 .hl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .dsel{display:flex;align-items:center;gap:6px;font-weight:600;font-size:15px}
 .dsel select{width:auto;min-width:0;max-width:72vw;font-weight:600;min-height:40px;padding:6px 10px}
+/* searchable picker (airport, city or country) */
+.combo{position:relative;display:inline-block;max-width:100%}
+.combo input{font:inherit;font-weight:600;font-size:16px;color:inherit;background:var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2358686f' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 10px center;border:1px solid var(--line);border-radius:var(--r-md);padding:6px 30px 6px 10px;min-height:40px;max-width:72vw;text-overflow:ellipsis}
+.combo input:focus{background-image:none}
+.combo .cl{position:absolute;z-index:30;top:calc(100% + 4px);left:0;width:min(420px,calc(100vw - 32px));max-height:min(60vh,440px);overflow:auto;overscroll-behavior:contain;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:0 8px 24px rgba(20,32,38,.18);list-style:none;margin:0;padding:4px 0;font-weight:400;font-size:15px}
+.combo .cl[hidden]{display:none}
+.combo .cg{font-size:12px;color:var(--muted);font-weight:600;padding:10px 12px 2px}
+.combo .co{padding:8px 12px;cursor:pointer;display:flex;justify-content:space-between;align-items:baseline;gap:10px;min-height:40px}
+.combo .co small{color:var(--muted);font-size:13px;text-align:right}
+.combo .co.all{color:var(--lupine);font-weight:600}
+.combo .co[aria-selected="true"],.combo .co:hover{background:var(--lupine-soft)}
+.combo .cn{padding:10px 12px;color:var(--muted)}
 .dpanel{max-width:1120px;margin:0 auto 12px;padding:0 16px}
 .dpanel .in{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg)}
 .dpanel .fgrid{border-bottom:1px solid var(--line)}
@@ -265,7 +277,7 @@ h2{font-size:17px;margin:22px 0 10px;font-weight:700}
 </style>
 </head>
 <body>
-<header><div class="hl"><h1>Flight Watch <span class="k"><i>✈</i></span></h1><label class="dsel">to <select id="dest" aria-label="Destination airport"><option>Keflavík</option></select></label></div><div class="status" id="status">Loading prices…</div></header>
+<header><div class="hl"><h1>Flight Watch <span class="k"><i>✈</i></span></h1><div class="dsel"><span id="destL">to</span><span class="combo" id="destC"></span></div></div><div class="status" id="status">Loading prices…</div></header>
 <div class="dpanel" id="dpanel" hidden></div>
 <nav aria-label="Views"><div class="in">
   <button data-v="trips" class="on"><span class="l">Cheapest flights</span><span class="s">Flights</span></button>
@@ -406,7 +418,13 @@ function drawFilters(){
   const bs=$('bagSw');if(bs)bs.onchange=()=>{st.bag=bs.checked;lsSet('ifw_bag',st.bag?'1':'0');drawFilters();render()};
   const as=$('anySort');if(as)as.onchange=()=>{st.anySort=as.value;lsSet('ifw_any_sort',as.value);st.limit=40;render()};
   const setDest=v=>{st.anyDest=v;lsSet('ifw_any_dest',JSON.stringify(v));st.limit=40;drawFilters();render()};
-  const da=$('anyDestAdd');if(da)da.onchange=()=>{if(da.value)setDest([...st.anyDest,da.value])};
+  const da=$('anyDestAdd');if(da)combo(da,{label:'Fly to: type an airport, city or country',placeholder:st.anyDest.length?'Add another airport or country…':'Every destination – or type an airport or country…',text:()=>'',
+    items:q=>{const w=fold(q).trim(),left=anyDests().filter(k=>!st.anyDest.includes(k)),out=[];
+      if(!w&&left.some(destOf))left.filter(destOf).sort((a,b)=>anyDestName(a).localeCompare(anyDestName(b))).forEach(k=>out.push({g:'Your airports',v:k,l:anyDestName(k),s:apSub(k)}));
+      findCodes(left,q).forEach(([n,l])=>{if(l.length>1&&w&&fold(n).startsWith(w))out.push({g:n,v:'c:'+n,l:`All ${l.length} airports in ${n}`,cls:'all'});
+        l.forEach(k=>out.push({g:n,v:k,l:anyDestName(k),s:apSub(k)}));});
+      return out;},
+    onPick:v=>setDest([...st.anyDest,...(isC(v)?findCodes(anyDests().filter(k=>!st.anyDest.includes(k)),v.slice(2)).find(([n])=>n===v.slice(2))?.[1]||[]:[v])])});
   F.querySelectorAll('#anyDestSel input').forEach(i=>i.onchange=()=>setDest(st.anyDest.filter(k=>k!==i.value)));
   const cd=$('calDirect');if(cd)cd.onchange=()=>{st.kind=cd.checked?'direct':'any';render()};
   const rs=$('route');if(rs)rs.onchange=()=>{st.route=rs.value;drawFilters();render()};
@@ -431,7 +449,8 @@ const bagTag=fee=>fee?`<span class="tag bag">+${KR(fee)} bag</span>`:'';
 function stopBadge(o,d,date,fare,x,direct,unc){
   const r=`${o}-${d}`,alt=dp=>dp&&dp!==fare?` <span class="tag alt" title="Cheapest direct flight that day">Direct ${KR(dp)}</span>`:'';
   if(x&&x.stops!=null)return x.stops?`<span class="tag stops">${stopsTxt(x.stops)}</span>${direct?'':alt(series(r,'direct').get(date))}`:'<span class="tag direct">Direct</span>';
-  if(unc||!checked(r))return `<span class="tag unk" title="This route has not been checked for direct flights yet. The Anywhere scan adds it during the day.">${direct?'Direct not checked yet':'Stops not known yet'}</span>`;
+  // not checked for direct flights yet: say so with Direct only on; otherwise show no badge rather than "unknown" on every leg
+  if(unc||!checked(r))return direct?'<span class="tag unk" title="This route has not been checked for direct flights yet. The Anywhere scan adds it during the day.">Direct not checked yet</span>':'';
   if(direct)return '<span class="tag direct">Direct</span>';
   const dp=series(r,'direct').get(date);
   return dp===fare?'<span class="tag direct">Direct</span>':`<span class="tag stops">With stops</span>${alt(dp)}`;
@@ -559,10 +578,8 @@ const anyDests=()=>[...new Set([...allCodes(),'KEF'])];
 const anyDestName=k=>ANYAP[k]?(ANYAP[k][2]||ANYAP[k][1])+' ('+k+')':k;
 // optional narrowing to some airports ("Fly to"); nothing chosen = every destination
 function anyDestPick(){
-  const ds=anyDests(),by=(a,b)=>anyDestName(a).localeCompare(anyDestName(b));
-  const opt=k=>st.anyDest.includes(k)?'':`<option value="${esc(k)}">${esc(anyDestName(k))}</option>`;
   return `<div class="f"><span class="t">Fly to</span>${st.anyDest.length?`<div class="chips" id="anyDestSel" style="margin-bottom:8px">${st.anyDest.map(k=>`<label title="Remove"><input type="checkbox" value="${esc(k)}" checked><span>${esc(anyDestName(k))} ×</span></label>`).join('')}</div>`:''}
-   <select id="anyDestAdd" aria-label="Add a destination" style="max-width:320px"><option value="">${st.anyDest.length?'Add another…':'Every destination – or pick airports…'}</option>${ds.length?`${ds.some(destOf)?`<optgroup label="Your airports">${ds.filter(destOf).sort(by).map(opt).join('')}</optgroup>`:''}${byCountry(ds,anyDestName).map(([n,l])=>`<optgroup label="${esc(n)}">${l.map(opt).join('')}</optgroup>`).join('')}`:''}</select></div>`;
+   <span class="combo" id="anyDestAdd"></span></div>`;
 }
 const anyDestOk=d=>!st.anyDest.length||st.anyDest.includes(d);
 function anyRows(){
@@ -809,18 +826,73 @@ function noData(){
   return PENDING.has(DST())?empty(`Getting the first prices for ${esc(nm(DST()))}…`,'This usually takes under a minute. The page updates by itself.')
     :empty(`No prices for ${esc(nm(DST()))} yet.`,'Prices show after the next price check. Google Flights prices come twice a day.');
 }
+// ---------- searchable picker: type an airport, city, code or country ----------
+// items(q) -> [{g: group heading, v: value, l: label, s: small text, cls}]; onPick(v, q); text() = shown when closed
+let comboN=0;
+function combo(host,{label,placeholder,items,onPick,text}){
+  const id='cb'+(++comboN);
+  host.innerHTML=`<input type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${id}" aria-label="${esc(label)}" autocomplete="off" spellcheck="false" placeholder="${esc(placeholder||'')}"><ul class="cl" id="${id}" role="listbox" aria-label="${esc(label)}" hidden></ul>`;
+  const inp=host.querySelector('input'),ul=host.querySelector('ul');let opts=[],act=-1,open=false;
+  const show=t=>{inp.value=t;inp.style.width=Math.min(Math.max(t.length+5,14),42)+'ch'};
+  const draw=()=>{const q=open&&inp.value!==text()?inp.value:'';const xs=items(q);opts=xs;act=xs.length?0:-1;let g=null,h='';
+    xs.forEach((x,i)=>{if(x.g!==g){g=x.g;if(g)h+=`<li class="cg" role="presentation">${esc(g)}</li>`;}
+      h+=`<li class="co ${x.cls||''}" role="option" id="${id}-${i}" data-i="${i}" aria-selected="${i===act}"><span>${esc(x.l)}</span>${x.s?`<small>${esc(x.s)}</small>`:''}</li>`;});
+    ul.innerHTML=h||`<li class="cn" role="presentation">No airport or country matches “${esc(q)}”.</li>`;setAct(act);};
+  const setAct=i=>{act=i;ul.querySelectorAll('.co').forEach(li=>li.setAttribute('aria-selected',String(+li.dataset.i===i)));
+    const li=ul.querySelector(`[data-i="${i}"]`);if(li){inp.setAttribute('aria-activedescendant',li.id);li.scrollIntoView({block:'nearest'});}else inp.removeAttribute('aria-activedescendant');};
+  const place=()=>{ul.style.left='0px';const r=host.getBoundingClientRect(),w=ul.offsetWidth;ul.style.left=Math.min(0,innerWidth-16-w-r.left)+'px';};
+  const openL=()=>{if(open)return;open=true;ul.hidden=false;inp.setAttribute('aria-expanded','true');draw();place();inp.select();};
+  const close=(keep)=>{open=false;ul.hidden=true;inp.setAttribute('aria-expanded','false');inp.removeAttribute('aria-activedescendant');if(!keep)show(text());};
+  const pick=i=>{const x=opts[i];if(!x)return;const q=inp.value;close();inp.blur();onPick(x.v,q);};
+  inp.onfocus=openL;inp.onclick=openL;
+  inp.oninput=()=>{if(!open){open=true;ul.hidden=false;inp.setAttribute('aria-expanded','true');}draw();place();};
+  inp.onkeydown=e=>{
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!open)openL();else if(opts.length)setAct((act+(e.key==='ArrowDown'?1:-1)+opts.length)%opts.length);}
+    else if(e.key==='Enter'){if(open){e.preventDefault();pick(act<0?0:act);}}
+    else if(e.key==='Escape'){if(open){e.preventDefault();close();}}
+    else if(e.key==='Tab')close();};
+  inp.onblur=()=>setTimeout(()=>{if(open&&document.activeElement!==inp)close();},150);
+  ul.onmousedown=e=>e.preventDefault();  // keep focus in the input while clicking the list
+  ul.onclick=e=>{const li=e.target.closest('.co');if(li)pick(+li.dataset.i);};
+  show(text());
+  return {refresh:()=>{if(!open)show(text());else draw();}};
+}
+// match airports on code, city, airport name or country; a matching country brings all its airports
+function codeScore(c,w){
+  const a=ANYAP[c]||[c,'','',''],code=c.toLowerCase(),city=fold(a[2]||nm(c)),name=fold(a[1]),land=fold(a[3]);
+  if(code===w)return 100;if(city===w)return 90;if(land===w)return 70;if(city.startsWith(w))return 60;if(land.startsWith(w))return 55;
+  if(name.split(/[\s\-\/]+/).some(x=>x.startsWith(w)))return 45;if(city.includes(w)||name.includes(w))return 30;if(w.length>=3&&land.includes(w))return 25;
+  if(w.includes(' ')&&w.split(/\s+/).every(x=>`${code} ${city} ${name} ${land}`.includes(x)))return 20;return 0;
+}
+// [[country, [codes]], …]: A–Z without a query; with one, the best-matching countries first and only matching airports
+function findCodes(codes,q){
+  const w=fold(q).trim();if(!w)return byCountry(codes,nm);
+  const sc=new Map(codes.map(c=>[c,codeScore(c,w)]).filter(x=>x[1]));
+  return byCountry([...sc.keys()],nm).map(([n,l])=>[n,l.sort((a,b)=>sc.get(b)-sc.get(a)||nm(a).localeCompare(nm(b))),Math.max(...l.map(c=>sc.get(c)))])
+    .sort((a,b)=>b[2]-a[2]||a[0].localeCompare(b[0])).map(([n,l])=>[n,l]);
+}
+const apSub=c=>{const a=ANYAP[c];return a&&a[1]&&fold(a[1])!==fold(a[2])?a[1]:''};
+let destCombo=null;
+const destLabel=()=>isAny(DST())?'Anywhere (every destination)':`${nm(DST())}${isC(DST())?'':' ('+DST()+')'}`;
 function drawDest(){
-  const o=(c,l)=>`<option value="${esc(c)}" ${c===DST()?'selected':''}>${esc(l)}</option>`;
-  const rest=byCountry(anyCodes().filter(c=>!followed(c)),nm);
-  $('dest').innerHTML=o('*','Anywhere (every destination)')+`<optgroup label="Your airports">${DESTS.map(d=>o(d.code,d.name+(d.name!==d.code?` (${d.code})`:''))).join('')}</optgroup>`+
-    rest.map(([n,l])=>`<optgroup label="${esc(n)}">${l.map(c=>o(c,`${nm(c)} (${c})`)).join('')}</optgroup>`).join('')+'<option value="+">Airports and status…</option>';
+  if(destCombo)return destCombo.refresh();
+  destCombo=combo($('destC'),{label:'Destination: type an airport, city or country',placeholder:'Airport, city or country',
+    text:destLabel,
+    items:q=>{const w=fold(q).trim(),out=[];
+      if(!w||'anywhere'.startsWith(w)||'every'.startsWith(w))out.push({g:'',v:'*',l:'Anywhere (every destination)'});
+      const mine=DESTS.filter(d=>!w||codeScore(d.code,w)||fold(d.name).includes(w)||fold(d.place).includes(w));
+      mine.forEach(d=>out.push({g:'Your airports',v:d.code,l:`${d.name}${d.name!==d.code?` (${d.code})`:''}`,s:d.place}));
+      findCodes(anyCodes().filter(c=>!followed(c)),q).forEach(([n,l])=>l.forEach(c=>out.push({g:n,v:c,l:`${nm(c)} (${c})`,s:apSub(c)})));
+      out.push({g:' ',v:'+',l:w?'Find and follow another airport…':'Airports and status…',cls:'all'});
+      return out;},
+    onPick:(v,q)=>{if(v!=='+')return setDest(v);openDPanel();$('dpanel').scrollIntoView({block:'start'});
+      const f=$('dFind');if(f&&q&&q!==destLabel()){f.value=q;f.dispatchEvent(new Event('input'));}}});
 }
 const navOn=()=>document.querySelectorAll('nav button').forEach(x=>{x.classList.toggle('on',x.dataset.v===view);if(x.dataset.v===view)x.scrollIntoView({block:'nearest',inline:'nearest'});});
 function setDest(c){
   st.dest=c;lsSet('ifw_dest',c);st.route='ALL-'+c;st.limit=40;
   drawDest();drawFilters();render();
 }
-$('dest').onchange=e=>{const v=e.target.value;if(v==='+'){e.target.value=DST();openDPanel();return;}setDest(v);};
 async function destApi(method,path,body){
   const pin=($('dPin')?.value||getPin()).trim();if(!pin)throw new Error('Enter your PIN first.');
   const r=await fetch(path,{method,headers:{'X-Pin':pin,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
