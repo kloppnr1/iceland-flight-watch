@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+<title>Flight Watch Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#edf1f2;--surface:#fff;--sunk:#e3e9eb;--ink:#142026;--muted:#58686f;--line:#d3dcdf;
+  --lupine:#5a3ea3;--lupine-soft:#ece6f8;--moss:#2a7a4b;--moss-soft:#dff0e5;--ember:#b13a2c;--ember-soft:#f8e2de;
+  --amber:#8a5a00;--amber-soft:#f8ecd0;
+  --r-lg:16px;--r-md:10px;--r-sm:999px;
+  --font:"Schibsted Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e1619;--surface:#172226;--sunk:#111b1e;--ink:#e4ecee;--muted:#8fa0a7;--line:#29373c;
+  --lupine:#b9a3f2;--lupine-soft:#2a2342;--moss:#62c98d;--moss-soft:#173327;--ember:#ff8f80;--ember-soft:#3a1f1c;
+  --amber:#f0c060;--amber-soft:#3a2e14;
+}}
+:root[data-theme="dark"]{
+  --bg:#0e1619;--surface:#172226;--sunk:#111b1e;--ink:#e4ecee;--muted:#8fa0a7;--line:#29373c;
+  --lupine:#b9a3f2;--lupine-soft:#2a2342;--moss:#62c98d;--moss-soft:#173327;--ember:#ff8f80;--ember-soft:#3a1f1c;
+  --amber:#f0c060;--amber-soft:#3a2e14;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;font:400 15px/1.5 var(--font);background:var(--bg);color:var(--ink)}
+a{color:var(--lupine)}
+:focus-visible{outline:2px solid var(--lupine);outline-offset:2px}
+header,main{max-width:1120px;margin:0 auto;padding-left:16px;padding-right:16px}
+header{padding-top:20px;padding-bottom:6px;display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.02em}
+h1 span{color:var(--muted);font-weight:600}
+h2{font-size:17px;font-weight:700;margin:28px 0 10px;letter-spacing:-.01em}
+.top{display:flex;gap:10px;align-items:center;color:var(--muted);font-size:13px}
+.btn{font:600 14px var(--font);border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r-md);padding:0 14px;min-height:38px;cursor:pointer}
+.btn:hover{border-color:var(--lupine)}
+main{padding-bottom:48px}
+.sum{border-radius:var(--r-lg);padding:14px 18px;margin:12px 0 0;font-weight:600;display:flex;gap:10px;align-items:flex-start}
+.sum ul{margin:4px 0 0;padding-left:18px;font-weight:400}
+.sum.ok{background:var(--moss-soft);color:var(--moss)}
+.sum.bad{background:var(--ember-soft);color:var(--ember)}
+.sum.bad ul{color:var(--ink)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px 18px;min-width:0}
+.card h3{margin:0;font-size:16px;font-weight:700}
+.card .what{color:var(--muted);font-size:13px;margin:2px 0 10px}
+.hd{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.pill{font-size:12px;font-weight:700;border-radius:var(--r-sm);padding:3px 10px;white-space:nowrap;background:var(--sunk);color:var(--muted)}
+.pill.ok{background:var(--moss-soft);color:var(--moss)}
+.pill.run{background:var(--lupine-soft);color:var(--lupine)}
+.pill.warn{background:var(--amber-soft);color:var(--amber)}
+.pill.bad{background:var(--ember-soft);color:var(--ember)}
+.bar{height:8px;border-radius:4px;background:var(--sunk);overflow:hidden;margin:6px 0 4px}
+.bar i{display:block;height:100%;background:var(--lupine);border-radius:4px}
+.bar.done i{background:var(--moss)}
+dl{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;margin:10px 0 0;font-size:14px}
+dt{color:var(--muted)}
+dd{margin:0;min-width:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.err{color:var(--ember)}
+.muted{color:var(--muted)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:14px 16px}
+.tile .k{color:var(--muted);font-size:13px;font-weight:500}
+.tile .v{font-size:22px;font-weight:700;letter-spacing:-.01em;margin:2px 0}
+.tile .s{font-size:13px;color:var(--muted)}
+.tile.bad .v{color:var(--ember)}.tile.warn .v{color:var(--amber)}
+.tw{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+th{text-align:left;font-weight:500;color:var(--muted);padding:10px 12px;white-space:nowrap}
+td{padding:8px 12px;border-top:1px solid var(--line);vertical-align:top}
+td.n,th.n{text-align:right}
+td.nw{white-space:nowrap}
+.age.ok{color:var(--moss)}.age.warn{color:var(--amber)}.age.bad{color:var(--ember);font-weight:600}
+.stack{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--sunk);margin:8px 0 6px}
+.stack i{display:block;height:100%}
+.leg{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.leg b{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.note{color:var(--muted);font-size:13px;margin:8px 0 0}
+@media (max-width:640px){th,td{padding:7px 8px}.card{padding:14px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Flight Watch <span>· download status</span></h1>
+  <div class="top"><span id="when" role="status">Loading…</span><button class="btn" id="reload" type="button">Refresh</button></div>
+</header>
+<main>
+  <div id="summary"></div>
+  <h2>Downloads</h2>
+  <div class="grid" id="jobs"></div>
+  <h2>Data on the server</h2>
+  <div class="tiles" id="tiles"></div>
+  <h2>Recent runs</h2>
+  <div id="history"></div>
+  <h2>Followed airports, per route</h2>
+  <div id="routes"></div>
+  <h2>Anywhere scan coverage</h2>
+  <div id="anywhere"></div>
+  <h2>Server</h2>
+  <div id="server"></div>
+  <p class="note">Reads the public files in <code>data/</code>. Jobs report their progress to <code>POST /api/jobs</code> (jobreport.py) at most once a minute. Page refreshes every minute. <a href="./">Back to Flight Watch</a></p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const H=t=>t?(Date.now()-Date.parse(t))/36e5:Infinity;  // hours since t
+const fmtT=t=>t?new Date(t).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'–';
+const ago=t=>{if(!t)return 'never';const m=Math.round((Date.now()-Date.parse(t))/6e4);return m<1?'just now':m<60?`${m} min ago`:m<2880?`${Math.round(m/60)} h ago`:`${Math.round(m/1440)} days ago`};
+const dur=(a,b)=>{if(!a)return '–';const m=Math.round(((b?Date.parse(b):Date.now())-Date.parse(a))/6e4);return m<60?`${m} min`:`${Math.floor(m/60)} h ${m%60} min`};
+const ageCls=(t,warn,bad)=>{const h=H(t);return h>bad?'bad':h>warn?'warn':'ok'};
+const get=f=>fetch('data/'+f,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
+
+// The download jobs: name in jobs.json, what it is, how often it runs, when "no news" means it is stuck
+const JOBS=[
+  {id:'google',name:'Google prices',what:'Cloud task, twice a day: calendars, then flight times for the next 60 days (up to 90 min).',stale:30,late:16},
+  {id:'google-new',name:'Google prices, new airport',what:'Cloud task started when an airport is added: calendars for the new routes (about 10 min).',stale:30,late:null},
+  {id:'anywhere',name:'Anywhere scan',what:'Cloud task, daily: all prices and direct-only prices to about 140 destinations (11–12 h).',stale:30,late:30},
+];
+const STATE={running:['Running','run'],done:['Finished','ok'],failed:['Failed','bad'],stopped:['Stopped early','warn'],lost:['Ended without report','warn']};
+
+function jobCard(J,r,problems){
+  if(!r)return `<section class="card"><div class="hd"><div><h3>${esc(J.name)}</h3></div><span class="pill">No reports yet</span></div>
+    <p class="what">${esc(J.what)}</p><p class="note">Progress shows here from the job's next run.</p></section>`;
+  let [label,cls]=STATE[r.state]||[r.state,''];
+  const quiet=r.state==='running'&&H(r.updated)*60>J.stale;
+  if(quiet){label=`No news for ${ago(r.updated).replace(' ago','')}`;cls='bad';problems.push(`${J.name}: running, but no report since ${fmtT(r.updated)} (the session may have been stopped).`);}
+  if(r.state==='failed')problems.push(`${J.name}: last run failed${r.note?': '+r.note:''}.`);
+  if(J.late&&r.state!=='running'&&H(r.updated)>J.late)problems.push(`${J.name}: no run for ${ago(r.updated).replace(' ago','')} (it should run every ${J.late<24?'12':'24'} h).`);
+  const pct=r.total?Math.min(100,Math.round(100*r.done/r.total)):(r.state==='done'?100:0);
+  return `<section class="card"><div class="hd"><div><h3>${esc(J.name)}</h3></div><span class="pill ${cls}">${esc(label)}</span></div>
+    <p class="what">${esc(J.what)}</p>
+    ${r.total?`<div class="bar ${r.state==='done'?'done':''}" role="progressbar" aria-valuemin="0" aria-valuemax="${r.total}" aria-valuenow="${r.done}" aria-label="${esc(r.phase)} progress"><i style="width:${pct}%"></i></div>
+    <div class="muted" style="font-size:13px">${esc(r.phase)}: ${r.done} of ${r.total} (${pct} %)</div>`:''}
+    <dl>
+      <dt>Started</dt><dd>${fmtT(r.started||r.run)}</dd>
+      <dt>${r.state==='running'?'Last report':'Ended'}</dt><dd>${fmtT(r.updated)} · ${ago(r.updated)}</dd>
+      <dt>Run time</dt><dd>${dur(r.started||r.run,r.state==='running'?null:r.updated)}</dd>
+      ${r.note?`<dt>${r.state==='running'?'Now':'Result'}</dt><dd>${esc(r.note)}</dd>`:''}
+      <dt>Errors</dt><dd class="${r.errors?'err':''}">${r.errors||'None'}${r.last_error?`<br><span style="font-size:13px">${esc(r.last_error)}</span>`:''}</dd>
+    </dl></section>`;
+}
+
+function tile(k,v,s,cls=''){return `<div class="tile ${cls}"><div class="k">${esc(k)}</div><div class="v">${v}</div><div class="s">${s}</div></div>`}
+
+async function load(){
+  $('when').textContent='Loading…';
+  const [J,L,A,Hh,D]=await Promise.all([get('jobs.json'),get('latest.json'),get('anywhere.json'),get('health.json'),get('dests.json')]);
+  const problems=[];
+  const jobs=J?.jobs||{};
+  $('jobs').innerHTML=JOBS.map(j=>jobCard(j,jobs[j.id],problems)).join('');
+
+  // data freshness (same limits as check_health.py)
+  const st=Object.entries(L?.status||{});
+  const g=st.filter(([,x])=>x.src==='google'),gAt=g.map(([,x])=>x.at).filter(Boolean).sort(),tAt=g.map(([,x])=>x.times_at).filter(Boolean).sort();
+  const newest=a=>a[a.length-1],oldest=a=>a[0];
+  let T='';
+  if(L){const c=ageCls(L.run_at,6,8);if(c==='bad')problems.push(`Page data last rebuilt ${ago(L.run_at)} (should be every 6 h or less).`);
+    T+=tile('Page data rebuilt',ago(L.run_at),`${fmtT(L.run_at)} · server, 4× a day and after each upload`,c==='ok'?'':c);}
+  else{problems.push('latest.json could not be read.');T+=tile('Page data rebuilt','–','latest.json could not be read','bad');}
+  if(gAt.length){const c=ageCls(newest(gAt),14,30);if(c==='bad')problems.push(`No new Google prices for ${ago(newest(gAt)).replace(' ago','')}.`);
+    T+=tile('Google prices',ago(newest(gAt)),`${g.length} of ${st.length} routes from Google · oldest route ${ago(oldest(gAt))}`,c==='ok'?'':c);}
+  else if(L){problems.push('No Google prices on the server.');T+=tile('Google prices','None','No route has Google prices','bad');}
+  if(tAt.length){const c=ageCls(newest(tAt),30,54);if(c==='bad')problems.push(`No new flight times for ${ago(newest(tAt)).replace(' ago','')}.`);
+    T+=tile('Flight times',ago(newest(tAt)),`${tAt.length} of ${st.length} routes have times · oldest ${ago(oldest(tAt))}`,c==='ok'?'':c);}
+  if(A){const c=ageCls(A.updated,26,36);if(c==='bad')problems.push(`Anywhere prices last updated ${ago(A.updated)}.`);
+    T+=tile('Anywhere prices',ago(A.updated),`${Object.keys(A.cal||{}).length} routes with prices · ${Object.keys(A.dcal||{}).length} checked for direct`,c==='ok'?'':c);}
+  else{problems.push('No Anywhere prices on the server.');T+=tile('Anywhere prices','None','anywhere.json could not be read','bad');}
+  $('tiles').innerHTML=T;
+
+  // history
+  const hist=(J?.history||[]).slice().reverse().slice(0,25);
+  const nm=id=>(JOBS.find(j=>j.id===id)||{name:id}).name;
+  $('history').innerHTML=hist.length?`<div class="tw"><table><thead><tr><th>Job</th><th>Started</th><th>Run time</th><th>Result</th><th class="n">Errors</th><th>Details</th></tr></thead><tbody>${hist.map(h=>{const [l,c]=STATE[h.state]||[h.state,''];
+    return `<tr><td class="nw">${esc(nm(h.job))}</td><td class="nw">${fmtT(h.started||h.run)}</td><td class="nw">${dur(h.started||h.run,h.ended||h.updated)}</td><td><span class="pill ${c}">${esc(l)}</span></td><td class="n ${h.errors?'err':''}">${h.errors||0}</td><td>${esc(h.note)}${h.last_error?`<br><span class="err" style="font-size:13px">${esc(h.last_error)}</span>`:''}</td></tr>`}).join('')}</tbody></table></div>`
+    :`<p class="note">No finished runs reported yet.</p>`;
+
+  // routes of the followed airports
+  const dn=Object.fromEntries((D||[]).map(d=>[d.code,d.name]));
+  const rows=st.sort(([a],[b])=>{const k=r=>{const [o,d]=r.split('-');return (dn[d]?d+'0'+o:o+'1'+d)};return k(a).localeCompare(k(b))}).map(([r,x])=>{const [o,d]=r.split('-');
+    const src=x.src==='google'?'Google':x.src==='tp'?'Travelpayouts':'None found';
+    return `<tr><td class="nw">${esc(o)} → ${esc(d)}</td><td>${src}</td><td class="n">${x.any??'–'}</td><td class="n">${x.direct??'–'}</td>
+      <td class="nw age ${x.at?ageCls(x.at,14,30):''}">${x.at?ago(x.at):'–'}</td><td class="nw age ${x.times_at?ageCls(x.times_at,30,54):''}">${x.times?ago(x.times_at):'–'}</td></tr>`}).join('');
+  $('routes').innerHTML=st.length?`<div class="tw"><table><thead><tr><th>Route</th><th>Prices from</th><th class="n">Days priced</th><th class="n">Direct days</th><th>Prices updated</th><th>Flight times</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="note">Destinations: ${(D||[]).map(d=>esc(`${d.name} (${d.code})`)).join(', ')||'–'}. Green under 14 h (prices) / 30 h (times), amber after, red after 30 h / 54 h.</p>`:'<p class="note">No routes.</p>';
+
+  // anywhere coverage: how old each route's prices are, per home airport
+  if(A){
+    const cal=A.cal||{},dcal=A.dcal||{},B=[['Under 1 day',24,'var(--moss)'],['1–3 days',72,'var(--lupine)'],['3–7 days',Infinity,'var(--amber)']];
+    const cnt=[0,0,0],per={};
+    for(const [r,c] of Object.entries(cal)){const h=H(c.at),i=h<=24?0:h<=72?1:2;cnt[i]++;
+      const [o,d]=r.split('-'),home=['CPH','BLL','AAR','AAL','HAM','KEF'].includes(o)?o:d;const p=per[home]||(per[home]={n:0,d:0,old:null,f:0});
+      p.n++;if(dcal[r])p.d++;if(i===0)p.f++;if(!p.old||c.at<p.old)p.old=c.at;}
+    const tot=cnt.reduce((a,b)=>a+b,0)||1;
+    $('anywhere').innerHTML=`<div class="card"><div class="muted" style="font-size:14px">${Object.keys(cal).length} routes with prices, ${Object.keys(dcal).length} checked for direct flights · last upload ${fmtT(A.updated)}</div>
+      <div class="stack" role="img" aria-label="${B.map((b,i)=>`${b[0]}: ${cnt[i]}`).join(', ')}">${B.map((b,i)=>`<i style="width:${100*cnt[i]/tot}%;background:${b[2]}"></i>`).join('')}</div>
+      <div class="leg">${B.map((b,i)=>`<span><b style="background:${b[2]}"></b>${b[0]}: ${cnt[i]}</span>`).join('')}</div>
+      <p class="note">Routes not refreshed for 7 days are dropped from the site.</p></div>
+      <div class="tw" style="margin-top:14px"><table><thead><tr><th>Home airport</th><th class="n">Routes</th><th class="n">Direct checked</th><th class="n">Updated last day</th><th>Oldest route</th></tr></thead><tbody>
+      ${Object.entries(per).sort().map(([k,p])=>`<tr><td>${esc(k)}</td><td class="n">${p.n}</td><td class="n">${p.d}</td><td class="n">${p.f}</td><td class="nw age ${ageCls(p.old,72,144)}">${ago(p.old)}</td></tr>`).join('')}</tbody></table></div>`;
+  }else $('anywhere').innerHTML='<p class="note">anywhere.json could not be read.</p>';
+
+  // server self-check (health.py, every 5 minutes)
+  if(Hh){const c=ageCls(Hh.checked_at,.25,.5);if(c==='bad')problems.push(`Server self-check last ran ${ago(Hh.checked_at)} (auto-deploy may be failing).`);
+    const tls=Object.entries(Hh.tls||{}),svc=Object.entries(Hh.services||{});
+    tls.forEach(([n,t])=>{if(!t.ok)problems.push(`HTTPS fails on ${n}: ${t.error}`);else if(t.days_left<14)problems.push(`Certificate for ${n} expires in ${t.days_left} days.`)});
+    svc.forEach(([u,s])=>{if(s!=='active')problems.push(`Service ${u} is "${s}".`)});
+    if(Hh.disk_free_pct<10)problems.push(`Server disk almost full: ${Hh.disk_free_pct} % free.`);
+    $('server').innerHTML=`<div class="tiles">${tile('Self-check',ago(Hh.checked_at),fmtT(Hh.checked_at),c==='ok'?'':c)}
+      ${tile('Services',svc.every(([,s])=>s==='active')?'All running':'Problem',svc.map(([u,s])=>`${esc(u)}: ${esc(s)}`).join(' · '),svc.every(([,s])=>s==='active')?'':'bad')}
+      ${tile('Certificates',tls.every(([,t])=>t.ok)?`${Math.min(...tls.map(([,t])=>t.days_left))} days left`:'Error',tls.map(([n,t])=>`${esc(n)}: ${t.ok?esc(t.key):'error'}`).join('<br>'),tls.every(([,t])=>t.ok&&t.days_left>=14)?'':'bad')}
+      ${tile('Free disk',`${Hh.disk_free_pct} %`,'on /',Hh.disk_free_pct<10?'bad':'')}</div>`;
+  }else{problems.push('health.json could not be read.');$('server').innerHTML='<p class="note">health.json could not be read.</p>';}
+
+  $('summary').innerHTML=problems.length
+    ?`<div class="sum bad" role="alert"><span>⚠</span><div>${problems.length} problem${problems.length>1?'s':''}<ul>${problems.map(p=>`<li>${esc(p)}</li>`).join('')}</ul></div></div>`
+    :`<div class="sum ok"><span>✓</span><div>All downloads and data look fine.</div></div>`;
+  $('when').textContent='Updated '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+}
+$('reload').onclick=load;
+load();
+setInterval(()=>{if(!document.hidden)load()},60000);
+</script>
+</body>
+</html>

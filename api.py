@@ -16,6 +16,10 @@ POST   /api/anywhere         -> prices to anywhere from the "anywhere" scan (hea
                                 routes = cheapest day per route [date, price, updated], cal = day-by-day prices.
                                 "dcal" (same form) = direct-only day-by-day prices; an empty "p" means the route
                                 was checked and has no direct flights. Kept as dcal in data/anywhere.json.
+POST   /api/jobs             -> progress of a download job (jobreport.py; header X-Upload-Token):
+                                {"job", "run", "state": running|done|failed|stopped, "phase", "done", "total",
+                                 "note", "errors", "last_error"}. Written to data/jobs.json for admin.html:
+                                jobs = latest report per job, history = the last finished runs.
 """
 import json, os, re, uuid, time, hmac, datetime, threading, subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -56,6 +60,9 @@ def pin_blocked(addr, now=None):
     BAD[:] = [(t, a) for t, a in BAD if now - t < BAD_ALL_SECS]
     return len(BAD) >= BAD_ALL or sum(1 for t, a in BAD if a == addr and now - t < BAD_ADDR_SECS) >= BAD_PER_ADDR
 
+
+JOB_STATES = ('running', 'done', 'failed', 'stopped')  # 'lost' is set here: a run that never reported its end
+JOB_HISTORY = 60  # finished runs kept in data/jobs.json
 
 GF_FIRE_URL = os.environ.get('GF_FIRE_URL', '').strip()
 GF_FIRE_TOKEN = os.environ.get('GF_FIRE_TOKEN', '').strip()
@@ -167,6 +174,8 @@ class H(BaseHTTPRequestHandler):
             return self.add_dest()
         if self.path.rstrip('/') == '/api/anywhere':
             return self.upload_anywhere()
+        if self.path.rstrip('/') == '/api/jobs':
+            return self.job_report()
         if self.path.rstrip('/') != '/api/watches':
             return self.reply(404, {'error': 'not found'})
         if not self.ok_pin():
@@ -330,6 +339,51 @@ class H(BaseHTTPRequestHandler):
             json.dump({'updated': now, 'routes': routes, 'cal': cal, 'dcal': dcal}, open(path + '.tmp', 'w'), separators=(',', ':'))
             os.replace(path + '.tmp', path)
         self.reply(200, {'saved': len(new), 'routes': len(routes)})
+
+    def job_report(self):
+        if not self.ok_token():
+            return
+        try:
+            n = int(self.headers.get('Content-Length', 0))
+            if n > 5000:
+                raise ValueError('too big')
+            b = json.loads(self.rfile.read(n))
+            job = str(b['job'])
+            if not re.fullmatch(r'[a-z][a-z0-9-]{0,30}', job):
+                raise ValueError('bad job')
+            if b.get('state') not in JOB_STATES:
+                raise ValueError('bad state')
+            r = {'run': str(datetime.datetime.fromisoformat(str(b['run'])).isoformat(timespec='seconds')),
+                 'state': b['state'], 'phase': str(b.get('phase') or '')[:200], 'note': str(b.get('note') or '')[:200],
+                 'done': max(0, int(b.get('done') or 0)), 'total': max(0, int(b.get('total') or 0)),
+                 'errors': max(0, int(b.get('errors') or 0)), 'last_error': str(b.get('last_error') or '')[:300]}
+        except Exception as e:
+            return self.reply(400, {'error': str(e)[:100]})
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+        path = os.path.join(DATA, 'jobs.json')
+        with lock:
+            try:
+                cur = json.load(open(path))
+            except Exception:
+                cur = {}
+            jobs, hist = cur.get('jobs', {}), cur.get('history', [])
+            prev = jobs.get(job) or {}
+            if prev.get('run') != r['run'] and prev.get('state') == 'running':
+                # a new run while the last one never said it ended (session killed): record it as lost
+                hist.append({**prev, 'job': job, 'state': 'lost', 'ended': prev.get('updated')})
+            r['updated'] = now
+            if prev.get('run') == r['run']:
+                if prev.get('state') != 'running':
+                    return self.reply(200, {'ok': True})  # already ended: late reports are ignored
+                r['started'] = prev.get('started', now)
+            else:
+                r['started'] = now
+            jobs[job] = r
+            if r['state'] != 'running':
+                hist.append({**r, 'job': job, 'ended': now})
+            json.dump({'updated': now, 'jobs': jobs, 'history': hist[-JOB_HISTORY:]}, open(path + '.tmp', 'w'), indent=1)
+            os.replace(path + '.tmp', path)
+        self.reply(200, {'ok': True})
 
     def log_message(self, *a):
         pass  # no access log; fire_google_task prints to the journal

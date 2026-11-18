@@ -837,7 +837,7 @@ function openDPanel(pre){
    <div class="f"><span class="t">Place, as in "30 days in …"</span><input type="text" id="dPlace" maxlength="40" placeholder="Spain"></div>
    <div class="f"><span class="t">PIN</span><input type="password" inputmode="numeric" autocomplete="off" id="dPin" value="${esc(getPin())}" placeholder="Needed to save"></div>
   </div>
-  <div class="act"><button class="btn" id="dAdd" type="button">Add airport</button><button class="btn ghost" id="dClose" type="button">Close</button><span class="msg" id="dMsg" role="status"></span></div></div>`;
+  <div class="act"><button class="btn" id="dAdd" type="button">Add airport</button><button class="btn ghost" id="dClose" type="button">Close</button><span class="msg" id="dMsg" role="status"></span><a href="admin.html" style="margin-left:auto;font-size:14px">Download status</a></div></div>`;
   const msg=(t,ok)=>{const m=$('dMsg');m.textContent=t;m.className='msg '+(ok?'ok':'err')};
   $('dClose').onclick=()=>{P.hidden=true;P.innerHTML=''};
   const find=$('dFind'),list=$('dList');find.focus();

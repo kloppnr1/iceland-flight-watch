@@ -21,6 +21,7 @@ uploaded at once; prints "nothing new" and stops if there are none. For a destin
 Usage: python3 fetch_gf.py [--new-only] [folder]
 """
 import json, os, sys, glob, datetime, subprocess, time, urllib.request
+from jobreport import Job
 
 FLI = os.environ.get('FLI', 'fli')
 T0 = time.time()
@@ -29,6 +30,7 @@ DAY_DAYS = int(os.environ.get('GF_DAY_DAYS', 60))
 CAL_MINUTES = float(os.environ.get('GF_CAL_MINUTES', 55))
 FRESH_HOURS = float(os.environ.get('GF_FRESH_HOURS', 10))
 NEW_ONLY = '--new-only' in sys.argv
+job = Job('google-new' if NEW_ONLY else 'google')  # progress for the admin page (admin.html)
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
 final = args[0] if args else ('calnew' if NEW_ONLY else 'cal')
 out = final + '.new'
@@ -101,6 +103,7 @@ print('destinations', DESTS, '- new routes first:', [f'{o}-{d}' for o, d in new]
 if NEW_ONLY:
     if not new:
         print('nothing new')
+        job.finish('done', 'nothing new')
         sys.exit(0)
     if not os.environ.get('UPLOAD_TOKEN'):
         sys.exit('--new-only needs UPLOAD_TOKEN')
@@ -128,7 +131,9 @@ def send(rts, what, details=False):
             return
         except Exception as e:
             print(what, 'failed', e, flush=True)
+            err = e
             time.sleep(30)
+    job.error(f'upload failed 3 times ({what.rstrip(":")}): {err}')
 
 
 def quick_upload():
@@ -151,12 +156,15 @@ def cal_fresh(r):
 
 
 unsent = []
+cal_failed = 0
 for i_route, (o, d) in enumerate(routes):
+    job.step('calendars', i_route, len(routes), f'{o}-{d}')
     if i_route == len(new) and not prog.get('quick_sent'):
         quick_upload(); prog['quick_sent'] = True; save_prog()
     if not NEW_ONLY and time.time() - T0 > CAL_MINUTES * 60:
         left = [f'{a}-{b}' for a, b in routes[i_route:] if not cal_fresh((a, b))]
         print(f'calendar time ({CAL_MINUTES:.0f} min) used; {len(left)} routes keep their earlier calendars:', left, flush=True)
+        job.step(note=f'calendar time used; {len(left)} routes left for the next run', force=True)
         break
     if not NEW_ONLY and cal_fresh((o, d)):
         print(o, d, f'calendar under {FRESH_HOURS:.0f} h old on the server, skipped', flush=True)
@@ -186,6 +194,8 @@ for i_route, (o, d) in enumerate(routes):
                     prices[x['departure_date']] = round(x['price'] / 10)
         else:
             print('fli failed', o, d, kind, (r.stderr or r.stdout)[:200], '- the server keeps its earlier calendar', flush=True)
+            cal_failed += 1
+            job.error(f'Google calendar {o}-{d} {kind} failed: {(r.stderr or r.stdout).strip()[-150:]}')
             prog['cal_done'].append(f'{o}-{d}-{kind}'); save_prog()
             continue
         time.sleep(float(os.environ.get("GF_PAUSE", 5)))
@@ -210,6 +220,7 @@ if len(new) == len(routes) and not prog.get('quick_sent'):
 
 if NEW_ONLY:
     print('new routes done')
+    job.finish('done', f'{len(routes)} new routes' + (f', {cal_failed} calendars failed' if cal_failed else ''))
     sys.exit(0)
 send(unsent, 'calendars sent:')
 
@@ -292,6 +303,7 @@ day_routes = sorted(routes, key=times_age)
 for o, d in day_routes:
     if f'{o}-{d}' in prog['day_done']:
         continue
+    job.step('flight times', len(prog['day_done']), len(day_routes), f'{o}-{d}')
     if over():
         left = [f'{a}-{b}' for a, b in day_routes if f'{a}-{b}' not in prog['day_done']]
         print(f'time limit ({MINUTES:.0f} min) reached; flight times for {len(left)} routes left for the next runs:', left, flush=True)
@@ -331,3 +343,6 @@ os.remove(prog_path)  # finished: next run starts fresh
 for f in glob.glob(os.path.join(out, '*.txt')) + glob.glob(os.path.join(out, '*-details.json')):
     os.replace(f, os.path.join(final, os.path.basename(f)))
 print('calendars updated')
+left = len(day_routes) - len(prog['day_done'])
+job.finish('done', f"calendars: {len(prog['cal_done'])} lookups" + (f' ({cal_failed} failed)' if cal_failed else '') +
+           f"; flight times: {len(prog['day_done'])} of {len(day_routes)} routes" + (f', {left} left for the next run' if left else ''))

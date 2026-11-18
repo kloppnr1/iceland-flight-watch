@@ -37,6 +37,7 @@ for f in api.py watches.py build.py tp.py patterns.py run.sh health.py; do
 done
 chmod 755 "$APP/run.sh"
 cmp -s site/index.html "$WEB/index.html" || install -m 644 site/index.html "$WEB/index.html"
+cmp -s site/admin.html "$WEB/admin.html" || install -m 644 site/admin.html "$WEB/admin.html"
 cmp -s site/data/bags.json "$WEB/data/bags.json" || install -m 644 site/data/bags.json "$WEB/data/bags.json"
 cmp -s site/airports.json "$WEB/airports.json" || install -m 644 site/airports.json "$WEB/airports.json"
 if [ $changed_api = 1 ]; then systemctl restart flight-watch-api; fi

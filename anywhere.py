@@ -17,6 +17,7 @@ Usage: python3 anywhere.py [results.jsonl]           scan (and upload as it goes
 """
 import json, os, sys, time, datetime, subprocess, threading, urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor
+from jobreport import Job
 
 FLI = os.environ.get('FLI', 'fli')
 UPLOAD_ONLY = '--upload-only' in sys.argv
@@ -152,11 +153,16 @@ def upload(routes):
             return
         except urllib.error.HTTPError as e:
             print('upload refused', e.code, e.read()[:200], flush=True)
+            if job:
+                job.error(f'upload refused: HTTP {e.code}')
             return
         except Exception as e:
             print('could not reach', site, e, flush=True)
+    if job:
+        job.error('upload failed: server not reachable')
 
 
+job = None
 if UPLOAD_ONLY:
     upload({(f'{o}-{d}', k) for (o, d, _, k), r in read_all().items()})
     sys.exit(0)
@@ -166,7 +172,10 @@ key = lambda j, k: (j[0], j[1], str(j[2]), k)
 todo = [j for j in jobs if key(j, 'any') not in found or key(j, 'direct') not in found]
 lock = threading.Lock()
 pending, n, t0 = set(), [0], time.time()
+failed = [0]
 print(len(jobs), 'lookups,', len(todo), 'left', flush=True)
+job = Job('anywhere')  # progress for the admin page (admin.html)
+job.step('scan', 0, len(todo), f'{len(jobs)} lookups in all, {len(jobs) - len(todo)} done in an earlier session', force=True)
 
 
 def save(j, k, r):
@@ -183,6 +192,9 @@ def work(j):
         r = lookup(j, 'any')
         if r is not None:
             save(j, 'any', r)
+        else:
+            with lock:
+                failed[0] += 1
     if r is not None and key(j, 'direct') not in found:
         # no flights at all in this window: no direct ones either, so no need to ask
         rd = [] if r == [] else lookup(j, 'direct')
@@ -194,8 +206,11 @@ def work(j):
             print(n[0], '/', len(todo), int(time.time() - t0), 's', flush=True)
             upload(set(pending))
             pending.clear()
+        note = f'{j[0]}-{j[1]}' + (f', {failed[0]} lookups failed' if failed[0] else '')
+    job.step('scan', n[0], len(todo), note)
 
 
 with ThreadPoolExecutor(4) as ex:
     list(ex.map(work, todo))
 print('finished', len(todo), int(time.time() - t0), 's', flush=True)
+job.finish('done', f'{len(todo)} lookups in {(time.time() - t0) / 3600:.1f} h' + (f', {failed[0]} failed (tried again next run)' if failed[0] else ''))

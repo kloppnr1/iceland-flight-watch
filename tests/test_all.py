@@ -105,6 +105,28 @@ class Api(unittest.TestCase):
         self.assertEqual(len(os.listdir(api.CAL)), 7)  # merge kept the other six
         self.assertTrue(started)  # the rebuild was started
 
+    def test_job_reports(self):
+        path = os.path.join(os.environ['DATA_DIR'], 'jobs.json')
+        if os.path.exists(path):
+            os.remove(path)
+        T = {'X-Upload-Token': 'tok'}
+        r1 = {'job': 'google', 'run': '2026-11-18T05:00:00+00:00', 'state': 'running', 'phase': 'calendars', 'done': 3, 'total': 50}
+        self.assertEqual(call('POST', '/api/jobs', r1, **{'X-Upload-Token': 'no'})[0], 403)
+        self.assertEqual(call('POST', '/api/jobs', {**r1, 'job': '../x'}, **T)[0], 400)
+        self.assertEqual(call('POST', '/api/jobs', {**r1, 'state': 'odd'}, **T)[0], 400)
+        self.assertEqual(call('POST', '/api/jobs', r1, **T)[0], 200)
+        call('POST', '/api/jobs', {**r1, 'done': 9}, **T)
+        d = json.load(open(path))
+        self.assertEqual((d['jobs']['google']['done'], d['history']), (9, []))
+        # a new run while the last one never ended: the old one goes to the history as lost
+        r2 = {**r1, 'run': '2026-11-18T17:00:00+00:00', 'done': 0}
+        call('POST', '/api/jobs', r2, **T)
+        call('POST', '/api/jobs', {**r2, 'state': 'done', 'note': 'all done'}, **T)
+        call('POST', '/api/jobs', {**r2, 'done': 5}, **T)  # late report after the end: ignored
+        d = json.load(open(path))
+        self.assertEqual([(h['run'], h['state']) for h in d['history']], [(r1['run'], 'lost'), (r2['run'], 'done')])
+        self.assertEqual((d['jobs']['google']['state'], d['jobs']['google']['note']), ('done', 'all done'))
+
     def test_pin_lockout(self):
         w = {'from': DAY(1), 'to': DAY(60), 'min_days': 3, 'max_days': 7}
         for _ in range(5):
