@@ -791,7 +791,13 @@ const destRoutes=()=>{const ks=DCODES();return [...new Set([...Object.keys(L?.ca
 const tpOnly=()=>{const rs=destRoutes();return rs.length>0&&rs.every(r=>L.src?.[r]==='tp')};
 const srcName=()=>!followed(DST())?'Google Flights (the Anywhere scan, once a day)':tpOnly()?'Travelpayouts (first prices)':'Google Flights';
 const followBtn=()=>`<a href="#" data-follow="${esc(DST())}">Follow ${esc(nm(DST()))}</a>`;
-const wireFollow=()=>document.querySelectorAll('#view [data-follow]').forEach(a=>a.onclick=e=>{e.preventDefault();scrollTo(0,0);openDPanel(ANYAP[a.dataset.follow]||[a.dataset.follow,a.dataset.follow,'','']);});
+// Follow: one click when the PIN is saved in this browser; otherwise the add form opens (in view) for the PIN
+const wireFollow=()=>document.querySelectorAll('#view [data-follow]').forEach(a=>a.onclick=async e=>{e.preventDefault();
+  const code=a.dataset.follow,ap=ANYAP[code]||[code,code,'',''];
+  if(getPin()&&!destOf(code)){const t=a.textContent;a.textContent='Following…';
+    try{DESTS=await destApi('POST','/api/dests',{code,name:ap[2]||ap[1],place:ap[3]});PENDING.add(code);setDest(code);scrollTo(0,0);waitForPrices(code);return;}
+    catch(err){a.textContent=t;if(!/PIN/i.test(err.message)){alert('Could not follow '+nm(code)+': '+err.message);return;}}}
+  openDPanel(ap);$('dpanel').scrollIntoView({block:'start'});const m=$('dMsg');if(m){m.className='msg';m.textContent='Enter your PIN and press Add airport to follow '+nm(code)+'.';}});
 function srcNote(){
   if(isC(DST())){const ks=DCODES(),f=ks.filter(followed);return `<p class="srcnote">All ${ks.length} airport${ks.length===1?'':'s'} in ${esc(nm(DST()))} the Anywhere scan covers: ${esc(ks.map(nm).join(', '))}. Prices from the Anywhere scan (Google Flights, once a day)${f.length?`, and twice-daily checks for ${esc(f.map(nm).join(', '))}`:''}.</p>`;}
   if(!followed(DST()))return `<p class="srcnote">Prices from the Anywhere scan (Google Flights, once a day). ${followBtn()} to add checks twice a day, flight times, changes and patterns.</p>`;
