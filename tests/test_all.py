@@ -12,7 +12,8 @@ import api, watches  # noqa: E402
 api.WATCH_FILE = os.path.join(TMP, 'watches.json')
 api.DEST_FILE = os.path.join(TMP, 'dests.json')
 api.CAL = os.path.join(TMP, 'cal')
-api.rebuild = lambda *a: None
+rebuilds = []
+api.rebuild = lambda *a: rebuilds.append(a)
 api.fire_google_task = lambda: None
 started = []
 api.subprocess = type('S', (), {'Popen': staticmethod(lambda *a, **k: started.append(a))})
@@ -138,7 +139,7 @@ class Api(unittest.TestCase):
         self.assertEqual(call('POST', '/api/cal', {'files': files}, **{'X-Upload-Token': 'tok'}), (200, {'saved': 6}))
         self.assertEqual(call('POST', '/api/cal', {'files': {'CPH-AGP-any.txt': DAY(1) + '\n9'}, 'merge': True}, **{'X-Upload-Token': 'tok'})[0], 200)
         self.assertEqual(len(os.listdir(api.CAL)), 7)  # merge kept the other six
-        self.assertTrue(started)  # the rebuild was started
+        self.assertIn(('--build-only',), rebuilds)  # the page rebuild was queued
 
     def test_job_reports(self):
         path = os.path.join(os.environ['DATA_DIR'], 'jobs.json')

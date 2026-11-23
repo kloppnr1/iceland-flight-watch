@@ -335,7 +335,7 @@ class H(BaseHTTPRequestHandler):
                     os.remove(os.path.join(CAL, f))
             for name, text in ok.items():
                 open(os.path.join(CAL, name), 'w').write(text)
-        subprocess.Popen(['systemctl', 'start', '--no-block', 'flight-watch.service'])
+        rebuild('--build-only')  # queued behind a running build (flock), so this upload is always built
         self.reply(200, {'saved': len(ok)})
 
     def upload_anywhere(self):

@@ -18,11 +18,13 @@ days found that way are kept until their stretch is searched again. Routes with 
 and uploads each route when it is done. Routes it does not reach keep their earlier flight times and get
 them on a later run.
 
---new-only: only the routes with no Google prices on the server yet, calendars only (a few minutes),
-uploaded at once; prints "nothing new" and stops if there are none. For a destination that was just added.
+--new-only: only the routes with no Google prices on the server yet, calendars only, for a destination that was
+just added: 3 routes at a time (GF_NEW_THREADS), all prices for every route first, then direct-only prices, each
+calendar uploaded as soon as it is done (all prices for 10 routes in about 3-4 minutes, direct-only after that);
+prints "nothing new" and stops if there are none, "new routes done" at the end.
 Usage: python3 fetch_gf.py [--new-only] [folder]
 """
-import json, os, sys, glob, datetime, subprocess, time, urllib.request
+import json, os, sys, glob, datetime, subprocess, threading, time, urllib.request
 from jobreport import Job
 
 FLI = os.environ.get('FLI', 'fli')
@@ -97,7 +99,7 @@ else:
 routes = [(a, D) for D in DESTS for a in HOME] + [(D, a) for D in DESTS for a in HOME]
 # routes the server has no Google calendar for yet: first in line
 latest = site_json('/data/latest.json') or {}
-have = {r for r in latest.get('cal', {}) if latest.get('src', {}).get(r) != 'tp'}
+have = {r for r in latest.get('cal', {}) if latest.get('src', {}).get(r) not in ('tp', 'anywhere')}  # own Google calendar
 if latest:
     new = [r for r in routes if f'{r[0]}-{r[1]}' not in have]
     st = latest.get('status', {})
@@ -127,7 +129,11 @@ def send(rts, what, details=False):
             p = os.path.join(out, f'{o}-{d}-{kind}.' + ('json' if kind == 'details' else 'txt'))
             if os.path.exists(p):
                 files[os.path.basename(p)] = open(p).read()
-    if not files:
+    send_files(files, what)
+
+
+def send_files(files, what):
+    if not files or not os.environ.get('UPLOAD_TOKEN'):
         return
     req = urllib.request.Request(SITE + '/api/cal', data=json.dumps({'files': files, 'merge': True}).encode(),
                                  headers={'Content-Type': 'application/json', 'X-Upload-Token': os.environ['UPLOAD_TOKEN'],
@@ -164,66 +170,104 @@ def cal_fresh(r):
 
 unsent = []
 cal_failed = 0
-for i_route, (o, d) in enumerate(routes):
-    job.step('calendars', i_route, len(routes), f'{o}-{d}')
-    if i_route == len(new) and not prog.get('quick_sent'):
-        quick_upload(); prog['quick_sent'] = True; save_prog()
-    if not NEW_ONLY and time.time() - T0 > CAL_MINUTES * 60:
-        left = [f'{a}-{b}' for a, b in routes[i_route:] if not cal_fresh((a, b))]
-        print(f'calendar time ({CAL_MINUTES:.0f} min) used; {len(left)} routes keep their earlier calendars:', left, flush=True)
-        job.step(note=f'calendar time used; {len(left)} routes left for the next run', force=True)
-        break
-    if not NEW_ONLY and cal_fresh((o, d)):
-        print(o, d, f'calendar under {FRESH_HOURS:.0f} h old on the server, skipped', flush=True)
-        continue
-    if not NEW_ONLY and i_route >= len(new):
-        unsent.append((o, d))
-        if len(unsent) > 5:
-            send(unsent[:-1], 'calendars sent:'); unsent = unsent[-1:]
-    for kind, stops in [('any', 'ANY'), ('direct', '0')]:
-        if f'{o}-{d}-{kind}' in prog['cal_done']:
-            continue
-        prices = {}
-        js = None
-        for attempt in range(4):
-            r = subprocess.run([FLI, 'dates', o, d, '--from', str(start), '--to', str(end), '--stops', stops,
-                                '--currency', 'DKK', '--format', 'json'], capture_output=True, text=True, timeout=300)
-            try:
-                js = json.loads(r.stdout)
-            except Exception:
-                js = None
-            if js and js.get('success'):
-                break
-            time.sleep(30 * (attempt + 1))  # Google rate limit (HTTP 429): wait and retry
+plock = threading.Lock()  # prog, cal_failed and the job report are shared by the threads of a --new-only run
+
+
+def done(o, d, kind):
+    with plock:
+        prog['cal_done'].append(f'{o}-{d}-{kind}'); save_prog()
+
+
+def fetch_cal(o, d, kind):
+    """One Google calendar (kind any or direct) for start..end, written to out/<o>-<d>-<kind>.txt."""
+    global cal_failed
+    if f'{o}-{d}-{kind}' in prog['cal_done']:
+        return
+    stops = 'ANY' if kind == 'any' else '0'
+    prices = {}
+    js = None
+    for attempt in range(4):
+        r = subprocess.run([FLI, 'dates', o, d, '--from', str(start), '--to', str(end), '--stops', stops,
+                            '--currency', 'DKK', '--format', 'json'], capture_output=True, text=True, timeout=300)
+        try:
+            js = json.loads(r.stdout)
+        except Exception:
+            js = None
         if js and js.get('success'):
-            for x in js.get('dates', []):
-                if x.get('price'):
-                    prices[x['departure_date']] = round(x['price'] / 10)
-            if kind == 'any':  # the days Google's calendar itself has, to see where it is thin (day-by-day pass)
+            break
+        time.sleep(30 * (attempt + 1))  # Google rate limit (HTTP 429): wait and retry
+    if js and js.get('success'):
+        for x in js.get('dates', []):
+            if x.get('price'):
+                prices[x['departure_date']] = round(x['price'] / 10)
+        if kind == 'any':  # the days Google's calendar itself has, to see where it is thin (day-by-day pass)
+            with plock:
                 prog.setdefault('raw', {})[f'{o}-{d}'] = sorted(prices)
-        else:
-            print('fli failed', o, d, kind, (r.stderr or r.stdout)[:200], '- the server keeps its earlier calendar', flush=True)
+    else:
+        print('fli failed', o, d, kind, (r.stderr or r.stdout)[:200], '- the server keeps its earlier calendar', flush=True)
+        with plock:
             cal_failed += 1
             job.error(f'Google calendar {o}-{d} {kind} failed: {(r.stderr or r.stdout).strip()[-150:]}')
-            prog['cal_done'].append(f'{o}-{d}-{kind}'); save_prog()
+        done(o, d, kind)
+        return
+    time.sleep(float(os.environ.get("GF_PAUSE", 5)))
+    # days the calendar search skipped: use the price from the server's last day-by-day search
+    for day, v in det_srv.get(f'{o}-{d}', {}).items():
+        if kind in v and day not in prices and str(start) <= day <= str(end):
+            prices[day] = round(v[kind]['p'] / 10)
+    if not prices:
+        print(o, d, kind, 'no flights', flush=True)
+        done(o, d, kind)
+        return
+    ks = sorted(prices)
+    d0 = datetime.date.fromisoformat(ks[0])
+    n = (datetime.date.fromisoformat(ks[-1]) - d0).days + 1
+    vals = [prices.get(str(d0 + datetime.timedelta(days=i)), 0) for i in range(n)]
+    with open(os.path.join(out, f'{o}-{d}-{kind}.txt'), 'w') as f:
+        f.write(ks[0] + '\n' + ' '.join(map(str, vals)) + '\n')
+    print(o, d, kind, ks[0], n, 'days', sum(1 for v in vals if v), 'priced', flush=True)
+    done(o, d, kind)
+
+
+if NEW_ONLY:
+    # A just-added airport: GF_NEW_THREADS routes at a time, all prices first, then direct-only prices, each route
+    # sent to the server as soon as it is done (the page rebuilds after each upload). A route already sent is no
+    # longer new, so a restarted run continues with the rest.
+    from concurrent.futures import ThreadPoolExecutor
+    n_done = [0]
+
+    def one(job_):
+        o, d, kind = job_
+        fetch_cal(o, d, kind)
+        if os.path.exists(os.path.join(out, f'{o}-{d}-{kind}.txt')):
+            files = {f'{o}-{d}-{kind}.txt': open(os.path.join(out, f'{o}-{d}-{kind}.txt')).read()}
+            send_files(files, f'quick upload of new routes ({o}-{d} {kind}):')
+        with plock:
+            n_done[0] += 1
+            job.step('calendars', n_done[0], 2 * len(routes), f'{o}-{d} {kind}')
+
+    with ThreadPoolExecutor(int(os.environ.get('GF_NEW_THREADS', 3))) as ex:
+        list(ex.map(one, [(o, d, k) for k in ['any', 'direct'] for o, d in routes]))
+    prog['quick_sent'] = True; save_prog()
+else:
+    for i_route, (o, d) in enumerate(routes):
+        job.step('calendars', i_route, len(routes), f'{o}-{d}')
+        if i_route == len(new) and not prog.get('quick_sent'):
+            quick_upload(); prog['quick_sent'] = True; save_prog()
+        if time.time() - T0 > CAL_MINUTES * 60:
+            left = [f'{a}-{b}' for a, b in routes[i_route:] if not cal_fresh((a, b))]
+            print(f'calendar time ({CAL_MINUTES:.0f} min) used; {len(left)} routes keep their earlier calendars:', left, flush=True)
+            job.step(note=f'calendar time used; {len(left)} routes left for the next run', force=True)
+            break
+        if cal_fresh((o, d)):
+            print(o, d, f'calendar under {FRESH_HOURS:.0f} h old on the server, skipped', flush=True)
             continue
-        time.sleep(float(os.environ.get("GF_PAUSE", 5)))
-        # days the calendar search skipped: use the price from the server's last day-by-day search
-        for day, v in det_srv.get(f'{o}-{d}', {}).items():
-            if kind in v and day not in prices and str(start) <= day <= str(end):
-                prices[day] = round(v[kind]['p'] / 10)
-        if not prices:
-            print(o, d, kind, 'no flights')
-            prog['cal_done'].append(f'{o}-{d}-{kind}'); save_prog()
-            continue
-        ks = sorted(prices)
-        d0 = datetime.date.fromisoformat(ks[0])
-        n = (datetime.date.fromisoformat(ks[-1]) - d0).days + 1
-        vals = [prices.get(str(d0 + datetime.timedelta(days=i)), 0) for i in range(n)]
-        with open(os.path.join(out, f'{o}-{d}-{kind}.txt'), 'w') as f:
-            f.write(ks[0] + '\n' + ' '.join(map(str, vals)) + '\n')
-        print(o, d, kind, ks[0], n, 'days', sum(1 for v in vals if v), 'priced')
-        prog['cal_done'].append(f'{o}-{d}-{kind}'); save_prog()
+        if i_route >= len(new):
+            unsent.append((o, d))
+            if len(unsent) > 5:
+                send(unsent[:-1], 'calendars sent:'); unsent = unsent[-1:]
+        for kind in ['any', 'direct']:
+            fetch_cal(o, d, kind)
 if len(new) == len(routes) and not prog.get('quick_sent'):
     quick_upload(); prog['quick_sent'] = True; save_prog()
 
@@ -307,7 +351,7 @@ def far_days(o, d):
 def read_cal(o, d, kind):
     p = os.path.join(out, f'{o}-{d}-{kind}.txt')
     if not os.path.exists(p):  # no calendar this run (search failed): start from the server's
-        c = latest.get('cal', {}).get(f'{o}-{d}', {}).get(kind) if latest.get('src', {}).get(f'{o}-{d}') != 'tp' else None
+        c = latest.get('cal', {}).get(f'{o}-{d}', {}).get(kind) if latest.get('src', {}).get(f'{o}-{d}') != 'tp' else None  # Google (own or Anywhere)
         if not c:
             return {}
         s0 = datetime.date.fromisoformat(c['start'])

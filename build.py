@@ -4,8 +4,9 @@ Usage: python3 build.py <cal_dir> <tp.json> <data_dir>
 - cal_dir: Google Flights calendar files "<FROM>-<TO>-<any|direct>.txt" (line 1 start date, then prices/10 per day, 0 = none)
 - tp.json: Travelpayouts output from tp.py
 - data_dir: the page's data folder; previous latest.json / changes.json / board.json / lows.json are read from here and updated
-Routes with no Google calendar yet (a destination that was just added) get a calendar made from the
-Travelpayouts prices instead; latest.json "src" marks those routes "tp".
+Routes with no Google calendar yet (a destination that was just added) take the Anywhere scan's Google prices
+(data/anywhere.json, about 140 destinations, 6 months) when it has the route, so they show at once; latest.json
+"src" marks those "anywhere". Otherwise they get a calendar made from the Travelpayouts prices; "src" = "tp".
 """
 import json, os, re, sys, glob, datetime, urllib.request
 
@@ -145,10 +146,24 @@ gdet = set(det)  # routes with flight times from Google's day-by-day search
 gcal = cal  # Google only: stored in runs/ for the patterns
 cal = dict(gcal)
 src = {}
+any_at = {}
+try:
+    A = json.load(open(os.path.join(data, 'anywhere.json')))
+except Exception:
+    A = {}
+for route in ROUTES:
+    c = (A.get('cal') or {}).get(route)
+    if route in gcal or not c or not any(c.get('p') or []):
+        continue
+    src[route], any_at[route] = 'anywhere', c.get('at')
+    cal[route] = {'any': {'start': c['start'], 'p': c['p']}}
+    dc = (A.get('dcal') or {}).get(route)
+    if dc and any(dc.get('p') or []):
+        cal[route]['direct'] = {'start': dc['start'], 'p': dc['p']}
 for route in ROUTES:
     o, d = route.split('-')
     rows = [x for x in tp['ow'] if x['o'] == o and x['d'] == d]
-    if route in gcal or not rows:
+    if route in cal or not rows:
         continue
     src[route] = 'tp'
     cal[route] = {}
@@ -185,7 +200,8 @@ for route in ROUTES:
         continue
     days = {k: sum(1 for v in c['p'] if v) for k, c in cal[route].items()}
     D = route.split('-')[1] if route.split('-')[0] in HOME else route.split('-')[0]
-    at = mtime(os.path.join(APP, 'tp', D + '.json')) if route in src else mtime(os.path.join(cal_dir, route + '-any.txt'))
+    at = any_at.get(route) if src.get(route) == 'anywhere' else mtime(os.path.join(APP, 'tp', D + '.json')) if route in src \
+        else mtime(os.path.join(cal_dir, route + '-any.txt'))
     status[route] = {'src': src.get(route, 'google'), 'any': days.get('any', 0), 'direct': days.get('direct', 0),
                      'times': route in gdet, 'times_at': mtime(os.path.join(cal_dir, route + '-details.json')) if route in gdet else None,
                      'at': at}

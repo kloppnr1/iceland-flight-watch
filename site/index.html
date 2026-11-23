@@ -824,7 +824,9 @@ const wireFollow=()=>document.querySelectorAll('#view [data-follow]').forEach(a=
 function srcNote(){
   if(isC(DST())){const ks=DCODES(),f=ks.filter(followed);return `<p class="srcnote">All ${ks.length} airport${ks.length===1?'':'s'} in ${esc(nm(DST()))} the Anywhere scan covers: ${esc(ks.map(nm).join(', '))}. Prices from the Anywhere scan (Google Flights, once a day)${f.length?`, and twice-daily checks for ${esc(f.map(nm).join(', '))}`:''}.</p>`;}
   if(!followed(DST()))return `<p class="srcnote">Prices from the Anywhere scan (Google Flights, once a day). ${followBtn()} to add checks twice a day, flight times, changes and patterns.</p>`;
-  const rs=destRoutes(),tp=rs.filter(r=>L.src?.[r]==='tp');if(!tp.length)return '';
+  const rs=destRoutes(),tp=rs.filter(r=>L.src?.[r]==='tp'),an=rs.filter(r=>L.src?.[r]==='anywhere');
+  if(an.length&&!tp.length)return `<p class="srcnote">${an.length===rs.length?'These prices':'Some routes\' prices'} for ${esc(nm(DST()))} come from the Anywhere scan (Google Flights, next 6 months, no flight times) until the airport's own checks arrive, usually within minutes of adding it.</p>`;
+  if(!tp.length)return '';
   return `<p class="srcnote">${tp.length===rs.length?'These are first prices':'Some routes show first prices'} for ${esc(nm(DST()))}, from Travelpayouts. They can miss days and cheaper fares. Google Flights prices replace them when they arrive, usually within 15 minutes of adding an airport.</p>`;
 }
 function noData(){
@@ -996,15 +998,16 @@ function openDPanel(pre){
 const ago=t=>{if(!t)return '';const m=Math.round((Date.now()-Date.parse(t))/6e4);return m<1?'just now':m<60?`${m} min ago`:m<1440?`${Math.round(m/60)} h ago`:new Date(t).toLocaleDateString('en-GB',{day:'numeric',month:'short'})};
 function destStatus(d){
   const S=L?.status||{},rs=[...APTS.map(a=>`${a}-${d.code}`),...APTS.map(a=>`${d.code}-${a}`)],xs=rs.map(r=>[r,S[r]]);
-  const g=xs.filter(([,x])=>x?.src==='google').length,t=xs.filter(([,x])=>x?.src==='tp').length,tm=xs.filter(([,x])=>x?.times).length;
+  const g=xs.filter(([,x])=>x?.src==='google').length,a=xs.filter(([,x])=>x?.src==='anywhere').length,t=xs.filter(([,x])=>x?.src==='tp').length,tm=xs.filter(([,x])=>x?.times).length;
   const known=xs.some(([,x])=>x),last=xs.map(([,x])=>x?.at).filter(Boolean).sort().pop();
   let cls,txt;
   if(!known){cls='wait';txt=PENDING.has(d.code)?'Getting first prices…':'Waiting for the first price check';}
-  else if(!g&&!t){cls='';txt='No flights found';}
+  else if(!g&&!a&&!t){cls='';txt='No flights found';}
+  else if(!g&&a){cls='part';txt=`Google prices from the Anywhere scan on ${a} of ${rs.length} routes${t?`, first prices on ${t} more`:''}. The full year of prices follows within minutes.`;}
   else if(g&&tm>=g){cls='ok';txt=`Google prices with flight times, ${g} of ${rs.length} routes`;}
   else if(g){cls='part';txt=`Google prices on ${g} of ${rs.length} routes${t?`, first prices on ${t} more`:''}. Flight times on ${tm} so far; a few routes get them each run.`;}
   else{cls='wait';txt=`First prices on ${t} of ${rs.length} routes. Waiting for Google prices (about 10 min after adding).`;}
-  const rows=xs.map(([r,x])=>{const [o,de]=r.split('-');return `<tr><td>${esc(o)} → ${esc(de)}</td><td>${!x||!x.src?'None found':x.src==='google'?'Google':'Travelpayouts'}</td><td>${x?.src?kr(x.any):'–'}</td><td>${x?.src?kr(x.direct):'–'}</td><td>${x?.times?'Yes':'–'}</td></tr>`}).join('');
+  const rows=xs.map(([r,x])=>{const [o,de]=r.split('-');return `<tr><td>${esc(o)} → ${esc(de)}</td><td>${!x||!x.src?'None found':x.src==='google'?'Google':x.src==='anywhere'?'Google (Anywhere scan)':'Travelpayouts'}</td><td>${x?.src?kr(x.any):'–'}</td><td>${x?.src?kr(x.direct):'–'}</td><td>${x?.times?'Yes':'–'}</td></tr>`}).join('');
   return `<details><summary><span class="dot ${cls}" aria-hidden="true"></span><span><span class="dn">${esc(d.name)} (${esc(d.code)})</span><br><span class="ds">${esc(txt)}${last?` · updated ${ago(last)}`:''}</span></span>${DESTS.length>1?`<button type="button" class="rm" data-rm="${esc(d.code)}" aria-label="Remove ${esc(d.name)}">Remove</button>`:''}</summary>
     <table><thead><tr><th>Route</th><th>Prices from</th><th>Days</th><th>Direct</th><th>Times</th></tr></thead><tbody>${rows}</tbody></table></details>`;
 }
