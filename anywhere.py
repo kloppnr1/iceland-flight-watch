@@ -129,12 +129,15 @@ def upload(routes):
     Direct routes are sent even with no prices: that tells the page the route has no direct flights."""
     if not TOKEN or not routes:
         return
-    days = {}
-    for (o, d, _, k), r in read_all().items():
+    days, wset = {}, {}
+    ends = {str(a): str(b) for a, b in wins}
+    for (o, d, a, k), r in read_all().items():
         if (f'{o}-{d}', k) in routes:
             m = days.setdefault((f'{o}-{d}', k), {})
             for _o, _d, day, p in r or []:
                 m[day] = min(round(p), m.get(day, 10 ** 9))
+            if r and a in ends:  # windows with prices: the server replaces only these days, and keeps the rest
+                wset.setdefault((f'{o}-{d}', k), []).append([a, ends[a]])
     out = {'cal': {}, 'dcal': {}}
     for (rk, k), m in days.items():
         if not m:
@@ -143,7 +146,8 @@ def upload(routes):
             continue
         d0 = datetime.date.fromisoformat(min(m))
         n = (datetime.date.fromisoformat(max(m)) - d0).days + 1
-        out['cal' if k == 'any' else 'dcal'][rk] = {'start': str(d0), 'p': [m.get(str(d0 + datetime.timedelta(days=i)), 0) for i in range(n)]}
+        out['cal' if k == 'any' else 'dcal'][rk] = {'start': str(d0), 'p': [m.get(str(d0 + datetime.timedelta(days=i)), 0) for i in range(n)],
+                                                    'win': sorted(wset.get((rk, k), []))}
     body = json.dumps(out).encode()
     for site in SITES:
         req = urllib.request.Request(site + '/api/anywhere', data=body, method='POST',
@@ -178,6 +182,12 @@ job = Job('anywhere')  # progress for the admin page (admin.html)
 job.step('scan', 0, len(todo), f'{len(jobs)} lookups in all, {len(jobs) - len(todo)} done in an earlier session', force=True)
 
 
+def has_flights(j):
+    """The route has prices on the site or in another window of this run, so an empty answer is suspect."""
+    rk = f'{j[0]}-{j[1]}'
+    return rk in AGES or any(found.get(key((j[0], j[1], a, b), 'any')) for a, b in wins)
+
+
 def save(j, k, r):
     with lock:
         found[key(j, k)] = r
@@ -190,6 +200,9 @@ def work(j):
     r = found.get(key(j, 'any'))
     if r is None:
         r = lookup(j, 'any')
+        if r == [] and has_flights(j):  # Google sometimes answers empty for a route that has flights: ask once more
+            time.sleep(5)
+            r = lookup(j, 'any')
         if r is not None:
             save(j, 'any', r)
         else:

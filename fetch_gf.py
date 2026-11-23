@@ -12,7 +12,9 @@ whose calendar on the server is oldest), skips routes whose server calendar is u
 hours old, uploads every 5 routes (merge: the server keeps the rest) and stops after GF_CAL_MINUTES (default 55)
 so time is left for flight times; the routes it did not reach keep their earlier calendars until a later run.
 Then, until GF_MINUTES, the day-by-day pass (flight times, days the calendar missed) runs for the next GF_DAY_DAYS days
-(default 60), routes with the oldest flight times first,
+(default 60), plus one stretch of GF_FAR_DAYS days (default 21) further ahead, up to GF_FAR_MAX days (default 240),
+a different stretch each run, on routes where Google's calendar has few days there (thin routes such as AAR-PMI);
+days found that way are kept until their stretch is searched again. Routes with the oldest flight times first,
 and uploads each route when it is done. Routes it does not reach keep their earlier flight times and get
 them on a later run.
 
@@ -27,6 +29,11 @@ FLI = os.environ.get('FLI', 'fli')
 T0 = time.time()
 MINUTES = float(os.environ.get('GF_MINUTES', 90))
 DAY_DAYS = int(os.environ.get('GF_DAY_DAYS', 60))
+# Beyond DAY_DAYS: each run also searches one stretch of FAR_DAYS days day by day, up to FAR_MAX days ahead, taking
+# the next stretch each run (12-hour turns), on routes where Google's calendar is thin there. Google's calendar
+# showed one day in two months for AAR-PMI (Nov 2026) while day searches found Ryanair's flights on 31 March and 7 April.
+FAR_DAYS = int(os.environ.get('GF_FAR_DAYS', 21))
+FAR_MAX = int(os.environ.get('GF_FAR_MAX', 240))
 CAL_MINUTES = float(os.environ.get('GF_CAL_MINUTES', 55))
 FRESH_HOURS = float(os.environ.get('GF_FRESH_HOURS', 10))
 NEW_ONLY = '--new-only' in sys.argv
@@ -192,6 +199,8 @@ for i_route, (o, d) in enumerate(routes):
             for x in js.get('dates', []):
                 if x.get('price'):
                     prices[x['departure_date']] = round(x['price'] / 10)
+            if kind == 'any':  # the days Google's calendar itself has, to see where it is thin (day-by-day pass)
+                prog.setdefault('raw', {})[f'{o}-{d}'] = sorted(prices)
         else:
             print('fli failed', o, d, kind, (r.stderr or r.stdout)[:200], '- the server keeps its earlier calendar', flush=True)
             cal_failed += 1
@@ -278,6 +287,21 @@ def write(o, d, kind, prices):
 
 
 days = [str(start + datetime.timedelta(days=i)) for i in range(min(DAY_DAYS, (end - start).days + 1))]
+far_n = max(1, -(-(FAR_MAX - DAY_DAYS) // FAR_DAYS)) if FAR_DAYS > 0 and FAR_MAX > DAY_DAYS else 0
+turn = int(datetime.datetime.fromisoformat(prog['started']).timestamp() // 43200)
+
+
+def far_days(o, d):
+    """This run's stretch of days beyond DAY_DAYS for the route (empty when the calendar covers it well)."""
+    if not far_n:
+        return []
+    i = (turn + sum(map(ord, o + d))) % far_n  # routes take turns at different stretches
+    a = DAY_DAYS + i * FAR_DAYS
+    ds = [str(start + datetime.timedelta(days=x)) for x in range(a, min(a + FAR_DAYS, FAR_MAX, (end - start).days + 1))]
+    raw = prog.get('raw', {}).get(f'{o}-{d}')
+    if raw is not None and ds and sum(1 for x in raw if ds[0] <= x <= ds[-1]) >= 0.8 * len(ds):
+        return []  # Google's calendar has (nearly) every day there: no need to ask day by day
+    return ds
 
 
 def read_cal(o, d, kind):
@@ -309,8 +333,9 @@ for o, d in day_routes:
         print(f'time limit ({MINUTES:.0f} min) reached; flight times for {len(left)} routes left for the next runs:', left, flush=True)
         break
     t0 = time.time()
+    search = days + far_days(o, d)
     with ThreadPoolExecutor(3) as ex:
-        res = list(ex.map(day_search, [(o, d, day) for day in days]))
+        res = list(ex.map(day_search, [(o, d, day) for day in search]))
     if any(a == 'stop' for _, a, _ in res):
         print(o, d, 'day by day stopped at the time limit; left for the next runs', flush=True)
         break
@@ -324,11 +349,12 @@ for o, d in day_routes:
                 prices[day] = round(v[kind]['p'] / 10)
         if prices:
             write(o, d, kind, prices)
-    # keep the server's flight times for the days after the searched ones
-    old = {k: v for k, v in det_srv.get(f'{o}-{d}', {}).items() if k > days[-1] and k <= str(end)}
+    # keep the server's flight times for the days not searched this run
+    looked = set(search)
+    old = {k: v for k, v in det_srv.get(f'{o}-{d}', {}).items() if k not in looked and str(start) <= k <= str(end)}
     with open(os.path.join(out, f'{o}-{d}-details.json'), 'w') as f:
         json.dump({**old, **det}, f, separators=(',', ':'), sort_keys=True)
-    print(o, d, 'day by day:', len(det), 'days with flights,', sum(1 for v in det.values() if 'direct' in v), 'direct,',
+    print(o, d, 'day by day:', len(search), 'days searched,', len(det), 'days with flights,', sum(1 for v in det.values() if 'direct' in v), 'direct,',
           failed, 'empty/failed,', int(time.time() - t0), 's', flush=True)
     prog['day_done'].append(f'{o}-{d}'); save_prog()
     send([(o, d)], f'{o}-{d} sent:', details=True)

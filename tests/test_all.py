@@ -104,6 +104,31 @@ class Api(unittest.TestCase):
         d = json.load(open(p))
         self.assertEqual((list(d['routes']), list(d['cal'])), (['HAM-PMI'], ['HAM-PMI']))
 
+    def test_anywhere_keeps_other_windows(self):
+        """An upload with prices for one window only keeps the earlier prices of the other windows (AAR-PMI, Nov 2026)."""
+        p = os.path.join(os.environ['DATA_DIR'], 'anywhere.json')
+        if os.path.exists(p):
+            os.remove(p)
+        T = {'X-Upload-Token': 'tok'}
+        full = [0] * 140
+        full[2], full[70], full[127] = 1800, 1500, 583  # one price in each 61-day window
+        call('POST', '/api/anywhere', {'cal': {'AAR-PMI': cal(DAY(1), full)}}, **T)
+        # next scan: only the first window came back with prices (the others empty), and day 3 got cheaper
+        call('POST', '/api/anywhere', {'cal': {'AAR-PMI': {**cal(DAY(1), [0, 0, 1700]), 'win': [[DAY(1), DAY(61)]]}}}, **T)
+        c = json.load(open(p))['cal']['AAR-PMI']
+        days = {str(datetime.date.fromisoformat(c['start']) + datetime.timedelta(days=i)): x for i, x in enumerate(c['p']) if x}
+        self.assertEqual(days, {DAY(3): 1700, DAY(71): 1500, DAY(128): 583})
+        self.assertEqual(json.load(open(p))['routes']['AAR-PMI'][:2], [DAY(128), 583])
+        # a window in the middle replaces only its own days; a day there without a price now is dropped
+        call('POST', '/api/anywhere', {'cal': {'AAR-PMI': {**cal(DAY(62), [0, 999]), 'win': [[DAY(62), DAY(122)]]}}}, **T)
+        c = json.load(open(p))['cal']['AAR-PMI']
+        days = {str(datetime.date.fromisoformat(c['start']) + datetime.timedelta(days=i)): x for i, x in enumerate(c['p']) if x}
+        self.assertEqual(days, {DAY(3): 1700, DAY(63): 999, DAY(128): 583})
+        # prices from an upload over a week old are not kept
+        old = api.merge_cal(c, {**cal(DAY(1), [5]), 'win': [[DAY(1), DAY(61)]]},
+                            (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=8)).isoformat(timespec='seconds'))
+        self.assertEqual((old['start'], old['p']), (DAY(1), [5]))
+
     def test_calendar_upload(self):
         files = {f'{a}-KEF-any.txt': DAY(1) + '\n50 0 61\n' for a in ['CPH', 'BLL', 'AAL', 'HAM', 'OSL', 'ARN']}
         self.assertEqual(call('POST', '/api/cal', {'files': files}, **{'X-Upload-Token': 'bad'})[0], 403)

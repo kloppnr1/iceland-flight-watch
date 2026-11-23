@@ -41,6 +41,58 @@ DEST_FILE = os.path.join(APP, 'dests.json')
 DEFAULT_DESTS = [{'code': 'KEF', 'name': 'Keflavík', 'place': 'Iceland'}]
 
 
+def merge_cal(old, new, now, keep_days=7):
+    """Merge an uploaded day-by-day calendar into the stored one. The new prices replace the days inside the
+    new calendar's windows (new['win'], else its first..last day); days outside them keep the stored prices while
+    the upload that brought them is under keep_days old. The result: {start, p, at, seg} where
+    seg = [[first day, last day, uploaded at], ...] tells which upload each stretch of days comes from."""
+    day = datetime.date.fromisoformat
+    s0 = day(new['start'])
+    win = [(day(a), day(b)) for a, b in new.get('win') or []] or [(s0, s0 + datetime.timedelta(days=len(new['p']) - 1))]
+    prices = {}
+    for i, x in enumerate(new['p']):
+        d = s0 + datetime.timedelta(days=i)
+        if x and any(a <= d <= b for a, b in win):
+            prices[d] = x
+    segs = [[a, b, now] for a, b in win]
+    if not (old and old.get('p')):  # nothing stored yet: keep the calendar as sent
+        return {'start': new['start'], 'p': new['p'], 'at': now, 'seg': [[str(a), str(b), t] for a, b, t in segs]}
+    o0 = day(old['start'])
+    oseg = [[day(a), day(b), t] for a, b, t in old.get('seg') or []] or \
+           [[o0, o0 + datetime.timedelta(days=len(old['p']) - 1), old.get('at', now)]]
+    limit = (datetime.datetime.fromisoformat(now) - datetime.timedelta(days=keep_days)).isoformat(timespec='seconds')
+    one = datetime.timedelta(days=1)
+    for a, b, t in oseg:
+        if t < limit:
+            continue
+        pieces = [(a, b)]
+        for a2, b2 in win:  # cut out the days the new calendar covers
+            cut = []
+            for x, y in pieces:
+                if y < a2 or x > b2:
+                    cut.append((x, y))
+                    continue
+                if x < a2:
+                    cut.append((x, a2 - one))
+                if y > b2:
+                    cut.append((b2 + one, y))
+            pieces = cut
+        for x, y in pieces:
+            segs.append([x, y, t])
+            for i, v in enumerate(old['p']):
+                d = o0 + datetime.timedelta(days=i)
+                if v and x <= d <= y:
+                    prices[d] = v
+    today = datetime.date.today()
+    segs = sorted([[max(a, today), b, t] for a, b, t in segs if b >= today])
+    prices = {d: x for d, x in prices.items() if d >= today}
+    if not prices:
+        return {'start': new['start'], 'p': [x for x in new['p']], 'at': now}
+    first, last = min(prices), max(prices)
+    return {'start': str(first), 'p': [prices.get(first + datetime.timedelta(days=i), 0) for i in range((last - first).days + 1)],
+            'at': now, 'seg': [[str(a), str(b), t] for a, b, t in segs]}
+
+
 def load_dests():
     try:
         return json.load(open(DEST_FILE)) or DEFAULT_DESTS
@@ -305,6 +357,9 @@ class H(BaseHTTPRequestHandler):
                         raise ValueError('bad route')
                     s0 = datetime.date.fromisoformat(c['start'])
                     out[k] = {'start': str(s0), 'p': [max(0, round(float(x))) for x in c['p']][:400]}
+                    if c.get('win'):
+                        out[k]['win'] = [[str(datetime.date.fromisoformat(a)), str(datetime.date.fromisoformat(b))]
+                                         for a, b in c['win']][:12]
             for k, c in cals.items():
                 s0 = datetime.date.fromisoformat(c['start'])
                 rows += [[*k.split('-'), str(s0 + datetime.timedelta(days=i)), x] for i, x in enumerate(c['p']) if x]
@@ -335,15 +390,26 @@ class H(BaseHTTPRequestHandler):
             # Google often answers a search with an empty list although the route has flights (seen on half the
             # searches for CPH-LHR, 18 Nov), so an empty calendar proves nothing: it is ignored and the route keeps
             # what it had. Only calendars with prices are stored.
+            # A calendar replaces only the days it covers ("win", the windows that came back with prices, or else its
+            # own first..last day). Earlier prices for other days are kept for up to a week (segments in "seg"), so a
+            # window Google answers empty this time (seen for AAR-PMI, Nov 2026) does not wipe that window's prices.
             for k, c in dcals.items():
                 if any(c['p']):
-                    dcal[k] = {**c, 'at': now}
+                    dcal[k] = merge_cal(dcal.get(k), c, now)
                     nod.pop(k, None)
             for k, (day, p) in new.items():
                 routes[k] = [day, p, now]
             for k, c in cals.items():
                 if any(c['p']):
-                    cal[k] = {**c, 'at': now}
+                    cal[k] = merge_cal(cal.get(k), c, now)
+            # the cheapest day per route, from the merged calendar (kept days included)
+            for k in cals:
+                if k in cal:
+                    s0 = datetime.date.fromisoformat(cal[k]['start'])
+                    best = min(((x, str(s0 + datetime.timedelta(days=i))) for i, x in enumerate(cal[k]['p']) if x and
+                                str(s0 + datetime.timedelta(days=i)) >= today), default=None)
+                    if best:
+                        routes[k] = [best[1], best[0], now]
             # drop what no scan has refreshed for a week (a destination taken off the scan list) and passed calendars
             old = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)).isoformat(timespec='seconds')
             routes = {k: v for k, v in routes.items() if len(v) < 3 or v[2] >= old}
