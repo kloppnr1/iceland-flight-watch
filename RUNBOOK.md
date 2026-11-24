@@ -15,6 +15,11 @@ Public page: https://fly.strømsparer.dk (Hetzner server 89.167.101.11, Caddy, `
 - **Tests:** `python3 -m unittest discover tests` (API, watch maths, archive rule; no network needed).
 - Secrets live in `/opt/flight-watch/.env` (TP_TOKEN, WATCH_PIN, UPLOAD_TOKEN), not in git.
 
+## Direct flights only (24 Nov 2026)
+The page shows direct flights only (no "Direct only" switches; watches are direct). Prices per day are the lowest of:
+- **Ryanair's own fares:** `ryanair.py` reads the public feeds Ryanair's website uses (route list per airport, cheapest fare per day per month; not an official API, so few and slow requests) for every Ryanair route from CPH, AAR and HAM (Ryanair has none from BLL, AAL or KEF), both ways, 12 months ahead, with departure and arrival times: about 100 routes, 1,200 requests, 11 minutes. `run.sh` runs it on the server's scheduled runs when `data/fr.json` is over 5 hours old (log `/opt/flight-watch/ryanair.log`); it can also run anywhere with `UPLOAD_TOKEN` and post to `POST /api/fr`. `build.py` merges it into the followed routes (calendars and flight times, `fr_routes` in latest.json); the page merges it into the Anywhere routes. Days with a Ryanair fare link to Ryanair's booking page. `check_health.py` reports Ryanair fares over 18 hours old.
+- **Google direct-only prices:** followed airports (`fetch_gf.py`, direct first for new airports) and the Anywhere scan, which now looks up direct-only prices only (`ANY_DIRECT_ONLY=0` brings back all prices) and sends them as both `cal` and `dcal`.
+
 ## Deploy code changes
 Push to `main`. The server pulls the repo every 5 minutes (`flight-watch-deploy.timer` → `/opt/flight-watch/autodeploy.sh`, read-only GitHub deploy key `/root/.ssh/flight_watch_deploy`) and installs changed scripts and the page by itself. New systemd units or Caddy changes still need SSH (`flight-watch.caddy` now has `encode zstd gzip`: copy it to the server's Caddy config and `systemctl reload caddy`) (deploy key in `Downloads\sport-tv-deploy` on Martin's PC).
 

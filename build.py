@@ -43,6 +43,49 @@ for f in sorted(glob.glob(os.path.join(cal_dir, '*.txt'))):
     cal.setdefault(f'{o}-{d}', {})[kind] = {'start': start, 'p': vals}
 
 
+# ---- Ryanair's own fares (ryanair.py -> data/fr.json): direct, every day Ryanair flies ----
+# Merged into the Google calendars (direct and all prices): the lower fare per day wins. A route Ryanair flies that has
+# no Google calendar yet gets one from Ryanair alone.
+try:
+    _fr = json.load(open(os.path.join(data, 'fr.json')))
+    FR, fr_at = _fr.get('routes', {}), _fr.get('updated')
+except Exception:
+    FR, fr_at = {}, None
+
+
+def fr_days(route):
+    c = FR.get(route)
+    if not c:
+        return {}
+    s0 = datetime.date.fromisoformat(c['start'])
+    return {str(s0 + datetime.timedelta(days=i)): x for i, x in enumerate(c['f']) if x and str(s0 + datetime.timedelta(days=i)) >= str(today)}
+
+
+def merge_days(c, days):
+    m = {}
+    if c:
+        s0 = datetime.date.fromisoformat(c['start'])
+        m = {str(s0 + datetime.timedelta(days=i)): v for i, v in enumerate(c['p']) if v}
+    for d, x in days.items():
+        if d not in m or x[0] < m[d]:
+            m[d] = x[0]
+    if not m:
+        return c
+    d0 = datetime.date.fromisoformat(min(m))
+    n = (datetime.date.fromisoformat(max(m)) - d0).days + 1
+    return {'start': str(d0), 'p': [m.get(str(d0 + datetime.timedelta(days=i)), 0) for i in range(n)]}
+
+
+gfile = set(cal)  # routes with Google calendars of their own (followed-airport checks)
+fr_routes = set()
+for route in ROUTES:
+    days = fr_days(route)
+    if days:
+        fr_routes.add(route)
+        for kind in ['direct', 'any']:
+            cal.setdefault(route, {})[kind] = merge_days(cal.get(route, {}).get(kind), days)
+
+
 def by_date(c):
     s = datetime.date.fromisoformat(c['start'])
     return {str(s + datetime.timedelta(days=i)): v for i, v in enumerate(c['p']) if v}
@@ -63,7 +106,7 @@ for route, kinds in cal.items():
         old_c = prev.get('cal', {}).get(route, {}).get(kind)
         if prev.get('src', {}).get(route) == 'tp':
             old_c = None  # last time this route only had Travelpayouts prices: not comparable
-        if old_c:
+        if old_c and (prev.get('fr') or not FR):  # the first build with Ryanair fares is not a change
             old = by_date(old_c)
             for dt, v in cur.items():
                 ov = old.get(dt)
@@ -140,6 +183,14 @@ for f in glob.glob(os.path.join(cal_dir, '*-details.json')):
     if f'{o}-{d}' not in ROUTES:
         continue
     det[f'{o}-{d}'] = {k: v for k, v in json.load(open(f)).items() if k >= str(today)}
+for route in fr_routes:  # Ryanair's flight times, where its fare is the cheapest (or the only one) that day
+    for day, (p, dep, arr, plus) in fr_days(route).items():
+        a_day = str(datetime.date.fromisoformat(day) + datetime.timedelta(days=plus))
+        x = {'p': p, 'dep': dep, 'arr': arr, 'arr_day': a_day, 'min': None, 'stops': 0, 'al': 'Ryanair', 'fr': 1}
+        dd = det.setdefault(route, {}).setdefault(day, {})
+        for kind in ['direct', 'any']:
+            if kind not in dd or p <= dd[kind]['p']:
+                dd[kind] = x
 
 # ---- Travelpayouts calendars for routes with no Google calendar yet ----
 gdet = set(det)  # routes with flight times from Google's day-by-day search
@@ -152,14 +203,16 @@ try:
 except Exception:
     A = {}
 for route in ROUTES:
-    c = (A.get('cal') or {}).get(route)
-    if route in gcal or not c or not any(c.get('p') or []):
+    if route in gfile:
         continue
-    src[route], any_at[route] = 'anywhere', c.get('at')
-    cal[route] = {'any': {'start': c['start'], 'p': c['p']}}
-    dc = (A.get('dcal') or {}).get(route)
-    if dc and any(dc.get('p') or []):
-        cal[route]['direct'] = {'start': dc['start'], 'p': dc['p']}
+    c, dc = (A.get('cal') or {}).get(route), (A.get('dcal') or {}).get(route)
+    if c and any(c.get('p') or []):
+        src[route], any_at[route] = 'anywhere', c.get('at')
+        cal.setdefault(route, {})['any'] = merge_days({'start': c['start'], 'p': c['p']}, fr_days(route))
+        if dc and any(dc.get('p') or []):
+            cal[route]['direct'] = merge_days({'start': dc['start'], 'p': dc['p']}, fr_days(route))
+    elif route in fr_routes:
+        src[route] = 'ryanair'  # Ryanair's fares only, until the Google checks arrive
 for route in ROUTES:
     o, d = route.split('-')
     rows = [x for x in tp['ow'] if x['o'] == o and x['d'] == d]
@@ -200,13 +253,13 @@ for route in ROUTES:
         continue
     days = {k: sum(1 for v in c['p'] if v) for k, c in cal[route].items()}
     D = route.split('-')[1] if route.split('-')[0] in HOME else route.split('-')[0]
-    at = any_at.get(route) if src.get(route) == 'anywhere' else mtime(os.path.join(APP, 'tp', D + '.json')) if route in src \
+    at = fr_at if src.get(route) == 'ryanair' else any_at.get(route) if src.get(route) == 'anywhere' else mtime(os.path.join(APP, 'tp', D + '.json')) if route in src \
         else mtime(os.path.join(cal_dir, route + '-any.txt'))
     status[route] = {'src': src.get(route, 'google'), 'any': days.get('any', 0), 'direct': days.get('direct', 0),
                      'times': route in gdet, 'times_at': mtime(os.path.join(cal_dir, route + '-details.json')) if route in gdet else None,
                      'at': at}
 
-latest = {'run_at': run_at, 'cal': cal, 'det': det, 'src': src, 'status': status, 'dests': DESTS, 'tp_ow': tp['ow'], 'tp_rt': tp['rt'],
+latest = {'run_at': run_at, 'fr': bool(FR), 'fr_routes': sorted(fr_routes), 'cal': cal, 'det': det, 'src': src, 'status': status, 'dests': DESTS, 'tp_ow': tp['ow'], 'tp_rt': tp['rt'],
           'prev_run_at': prev.get('run_at'),
           # previous prices, only where they came from the same source (Google vs Travelpayouts)
           'prev_cal': {r: v for r, v in prev.get('cal', {}).items() if prev.get('src', {}).get(r) == src.get(r)}}

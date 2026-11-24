@@ -299,7 +299,7 @@ h2{font-size:17px;margin:22px 0 10px;font-weight:700}
 </main>
 <script>
 const APTS=['CPH','BLL','AAR','AAL','HAM'],NAME={CPH:'Copenhagen',BLL:'Billund',AAR:'Aarhus',AAL:'Aalborg',HAM:'Hamburg'};
-const ANY_FROM=[...APTS,'KEF'];let ANY=null,ANYAP={};
+const ANY_FROM=[...APTS,'KEF'];let ANY=null,ANYAP={},FRD=null;  // FRD = Ryanair's own fares (data/fr.json)
 let DESTS=[{code:'KEF',name:'Keflavík',place:'Iceland'}];
 const destOf=c=>DESTS.find(d=>d.code===c);
 const nm=c=>isAny(c)?'Anywhere':isC(c)?c.slice(2):NAME[c]||destOf(c)?.name||(ANYAP[c]?ANYAP[c][2]||ANYAP[c][1]:c);
@@ -307,7 +307,7 @@ const DST=()=>st.dest;const PLACE=()=>isAny(st.dest)?'anywhere':isC(st.dest)?st.
 // Every airport the Anywhere scan prices is a destination everywhere on the page. Followed airports (DESTS) add
 // Google checks twice a day, direct-only prices, flight times, changes and patterns; the rest use the Anywhere prices.
 const followed=c=>!!destOf(c);
-const anyCodes=()=>{const s=new Set();for(const r of Object.keys(ANY?.cal||{})){const d=r.split('-')[1];if(!ANY_FROM.includes(d))s.add(d)}return [...s]};
+const anyCodes=()=>{const s=new Set();for(const r of [...Object.keys(ANY?.cal||{}),...Object.keys(FRD?.routes||{})]){const d=r.split('-')[1];if(!ANY_FROM.includes(d))s.add(d)}return [...s]};
 // a destination is one airport (code) or a whole country ('c:' + country, as on Anywhere): every airport there
 const isC=c=>String(c).startsWith('c:');
 // '*' = Anywhere: the cheapest trip to every destination, one card each (Cheapest flights only)
@@ -320,7 +320,7 @@ const ctryCodes=n=>allCodes().filter(c=>ANYAP[c]?.[3]===n);
 const DCODES=()=>isAny(DST())?[]:isC(DST())?ctryCodes(DST().slice(2)):[DST()];
 const isDest=c=>isAny(c)||isC(c)?isAny(c)||ctryCodes(c.slice(2)).length>0:followed(c)||anyCodes().includes(c);
 const ORIG=()=>ANY_FROM.filter(x=>!DCODES().includes(x));  // airports to fly from and home to: Keflavík too when the destination is elsewhere
-const DIRECT=()=>st.stops==='direct';  // direct-only prices: twice-daily checks for followed airports, the Anywhere scan for the rest
+const DIRECT=()=>true;  // direct flights only: Ryanair's own fares, Google's direct-only prices (followed airports twice a day, the Anywhere scan for the rest)
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const kr=v=>v==null?'–':Math.round(v).toLocaleString('da-DK');
@@ -329,7 +329,7 @@ const D=s=>new Date(s+'T12:00:00Z');const iso=d=>d.toISOString().slice(0,10);
 const add=(s,n)=>{const d=D(s);d.setUTCDate(d.getUTCDate()+n);return iso(d)};
 const days=(a,b)=>Math.round((D(b)-D(a))/864e5);
 const fd=s=>D(s).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'2-digit'});
-const gf=(o,d,date,direct)=>'https://www.google.com/travel/flights?hl=en&curr=DKK&q='+encodeURIComponent(`${direct?'nonstop ':''}one way flights from ${o} to ${d} on ${date}`);
+const gf=(o,d,date,direct)=>det(o,d,date,true)?.fr?frURL(o,d,date):'https://www.google.com/travel/flights?hl=en&curr=DKK&q='+encodeURIComponent(`${direct?'nonstop ':''}one way flights from ${o} to ${d} on ${date}`);
 const gfRT=(o,d1,d2,direct,k=DST())=>'https://www.google.com/travel/flights?hl=en&curr=DKK&q='+encodeURIComponent(`${direct?'nonstop ':''}flights from ${o} to ${k} on ${d1} returning ${d2}`);
 const EXT='<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2h6v6M10 2 3 9" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
 const lnk=(href,label,cls='')=>`<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener">${label}${EXT}</a>`;
@@ -338,17 +338,24 @@ const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v}catch
 const st={dest:(v=>isC(v)?'KEF':v)(lsGet('ifw_dest','KEF')),bag:lsGet('ifw_bag','0')==='1',type:'rt',out:new Set(APTS),home:new Set(APTS),owDir:'to',owApt:new Set(APTS),mix:lsGet('ifw_rt_mix','1')==='1',anySort:lsGet('ifw_any_sort','price'),anyDest:(()=>{try{const v=JSON.parse(lsGet('ifw_any_dest','[]'));return Array.isArray(v)?v.map(String).filter(k=>!isC(k)):[]}catch(e){return []}})(),minM:0,maxM:0.5,unit:lsGet('ifw_stay_unit2','d'),minD:4,maxD:14,stops:lsGet('ifw_direct','1')==='1'?'direct':'any',from:'',to:'',maxp:'',
   route:'ALL-'+(v=>isC(v)?'KEF':v)(lsGet('ifw_dest','KEF')),kind:'direct',chDir:'both',chWhat:'drops',limit:40,open:matchMedia('(min-width:900px)').matches};
 
+const FRS=new Map();
+function frDays(route){if(!FRS.has(route)){const m=new Map(),c=FRD?.routes?.[route];if(c){let d=c.start;c.f.forEach(x=>{if(x)m.set(d,x);d=add(d,1)})}FRS.set(route,m)}return FRS.get(route);}
+const frDet=(o,d,date)=>{const x=frDays(`${o}-${d}`).get(date);return x?{p:x[0],dep:x[1],arr:x[2],arr_day:add(date,x[3]),min:null,stops:0,al:'Ryanair',fr:1}:null};
+const frURL=(o,d,date)=>`https://www.ryanair.com/dk/da/trip/flights/select?adults=1&teens=0&children=0&infants=0&dateOut=${date}&isReturn=false&originIata=${o}&destinationIata=${d}`;
 const SER=new Map();  // data is loaded once, so each route's series is built once
 function series(route,kind,prev){const key=route+'|'+kind+'|'+(prev?1:0);if(!SER.has(key))SER.set(key,series0(route,kind,prev));return SER.get(key);}
 function series0(route,kind,prev){const src=prev?L.prev_cal:L.cal;let c=src?.[route]?.[kind];
   // route without Google checks of its own: the Anywhere scan's prices (no earlier check to compare with, so "prev" is the same)
-  if(!L.cal?.[route]){const A=kind==='direct'?ANY?.dcal:ANY?.cal;if(A?.[route])c=A[route];}const m=new Map();if(!c)return m;let d=c.start;c.p.forEach(v=>{if(v)m.set(d,v);d=add(d,1)});return m;}
+  if(!L.cal?.[route]){const A=kind==='direct'?ANY?.dcal:ANY?.cal;c=A?.[route]||null;}const m=new Map();if(c){let d=c.start;c.p.forEach(v=>{if(v)m.set(d,v);d=add(d,1)});}
+  // Ryanair's own fares (followed airports have them merged by the server already): the lower fare per day wins
+  if(!L.cal?.[route]&&!prev)frDays(route).forEach((x,d)=>{if(!m.has(d)||x[0]<m.get(d))m.set(d,x[0])});
+  return new Map([...m].sort());}
 const hasPrev=()=>!!L.prev_cal;
 // has this route been checked for direct flights? (followed: the twice-daily checks; others: the Anywhere scan)
-const checked=r=>!!(L.cal?.[r]||ANY?.dcal?.[r]||ANY?.nod?.[r]);  // nod = confirmed no direct flights
+const checked=r=>!!(L.cal?.[r]||ANY?.dcal?.[r]||ANY?.nod?.[r]||FRD?.routes?.[r]);  // nod = confirmed no direct flights
 // prices to use: direct-only when Direct only is on; a route not yet checked for direct flights uses all prices,
 // marked unchecked ("unc") so the cards say so and list it after the confirmed direct ones
-const serD=(r,direct,prev)=>direct&&!checked(r)?{m:series(r,'any',prev),unc:true}:{m:series(r,direct?'direct':'any',prev),unc:false};
+const serD=(r,direct,prev)=>({m:series(r,'direct',prev),unc:false});  // direct flights only
 function chg(now,prev){if(!hasPrev())return '';if(prev==null)return '<span class="chg new">New</span>';
   if(now<prev)return `<span class="chg down" title="Was ${KR(prev)} at the last check">▼ ${KR(prev-now)}</span>`;
   if(now>prev)return `<span class="chg up" title="Was ${KR(prev)} at the last check">▲ ${KR(now-prev)}</span>`;return '';}
@@ -357,7 +364,7 @@ function chg(now,prev){if(!hasPrev())return '';if(prev==null)return '<span class
 function chips(id,label,vals,set,names){return `<div class="f"><span class="t">${label}</span><div class="chips" data-set="${id}">${vals.map(v=>`<label><input type="checkbox" value="${v}" ${set.has(v)?'checked':''}><span>${names?names[v]:v}</span></label>`).join('')}</div></div>`}
 function seg(id,opts,cur,aria){return `<div class="seg" role="radiogroup" aria-label="${aria}" data-radio="${id}">${opts.map(([v,l])=>`<label><input type="radio" name="${id}" value="${v}" ${cur===v?'checked':''}>${l}</label>`).join('')}</div>`}
 function radios(id,label,opts,cur){return `<div class="f"><span class="t">${label}</span>${seg(id,opts,cur,label)}</div>`}
-const directSw=()=>`<label class="sw"><input type="checkbox" id="directSw" ${st.stops==='direct'?'checked':''}>Direct only</label>`;
+const directSw=()=>'';  // the page shows direct flights only
 const aptSum=s=>{const o=ORIG(),x=o.filter(a=>s.has(a));return x.length===o.length?'All airports':x.length===APTS.length&&!s.has('KEF')?'Denmark and Hamburg':x.length?x.join(', '):'No airports'};
 // stay as [shortest, longest] in days, from the months or days fields
 const stayDays=()=>st.unit==='d'?[Math.max(0,Math.round(+st.minD)||0),Math.round(+st.maxD)||9999]:[Math.round(+st.minM*30.4),Math.round(+st.maxM*30.4)||9999];
@@ -396,10 +403,10 @@ function drawFilters(){
     if(!isC(DST()))h+=`<div class="bar">${bagSw()}</div>${bagNote()}`+watchForm();
   } else if(view==='cal'){
     const D_=DST(),routes=isC(D_)?[...(DCODES().some(k=>ANY?.cal?.['KEF-'+k]||L.cal['KEF-'+k])?['KEF-'+D_,D_+'-KEF']:[]),...DCODES().slice().sort((a,b)=>nm(a).localeCompare(nm(b))).flatMap(k=>['ALL-'+k,k+'-ALL'])]:[...new Set([...Object.keys(L.cal),...Object.keys(ANY?.cal||{})])].filter(r=>{const [a,b]=r.split('-');return a===D_&&ORIG().includes(b)||b===D_&&ORIG().includes(a)}).sort((a,b)=>(a.startsWith(D_)-b.startsWith(D_))||a.localeCompare(b));
-    const kinds=!followed(D_)?(DCODES().some(k=>Object.keys(ANY?.dcal||{}).some(r=>r.split('-').includes(k)))?['any','direct']:['any']):st.route.includes('ALL')?['any','direct']:Object.keys(L.cal[st.route]||{any:1});if(!kinds.includes(st.kind))st.kind='any';
+    const kinds=!followed(D_)?(DCODES().some(k=>Object.keys(ANY?.dcal||{}).some(r=>r.split('-').includes(k)))?['any','direct']:['any']):st.route.includes('ALL')?['any','direct']:Object.keys(L.cal[st.route]||{any:1});st.kind='direct';
     const opt=(v,l)=>`<option value="${esc(v)}" ${v===st.route?'selected':''}>${l}</option>`;
     h+=`<div class="bar"><select id="route" aria-label="Route" style="flex:1;max-width:360px">${opt('ALL-'+D_,'All airports → '+esc(nm(D_)))}${opt(D_+'-ALL',esc(nm(D_))+' → all airports')}${routes.map(r=>{const [a,b]=splitRoute(r);return opt(esc(r),`${a==='ALL'?'All airports':esc(nm(a))} → ${b==='ALL'?'all airports':esc(nm(b))}`)}).join('')}</select>`+
-      (kinds.includes('direct')?`<label class="sw"><input type="checkbox" id="calDirect" ${st.kind==='direct'?'checked':''}>Direct only</label>`:`<span class="sub">${followed(D_)?'No direct flights on this route':'Direct and with stops (direct-only prices come with the next Anywhere scan)'}</span>`)+`</div>`;
+      `</div>`;
   } else if(view==='pat'){
     h+=`<div class="bar">${directSw()}</div>`;
   } else if(view==='changes'){
@@ -442,7 +449,7 @@ function wireMore(){const b=$('morebtn');if(b)b.onclick=()=>{st.limit+=40;render
 const empty=(t,s)=>`<div class="empty"><b>${t}</b>${s}</div>`;
 
 // ---------- flight details + bags ----------
-const det=(o,d,date,direct)=>L.det?.[`${o}-${d}`]?.[date]?.[direct?'direct':'any']||null;
+const det=(o,d,date,direct)=>{const x=L.det?.[`${o}-${d}`]?.[date]?.direct||null,f=frDet(o,d,date);return f&&(!x||f.p<=x.p)?f:x};
 const dur=m=>m==null?'':(Math.floor(m/60)?`${Math.floor(m/60)} h`:'')+(m%60?`${Math.floor(m/60)?' ':''}${m%60} min`:'');
 const stopsTxt=n=>n==null?'':n?`${n} stop${n>1?'s':''}`:'Direct';
 const times=(x,date)=>x&&x.dep?`${esc(x.dep)}–${esc(x.arr)}${x.arr_day&&x.arr_day>date?`<sup class="nd">+${days(date,x.arr_day)}</sup>`:''}`:'';
@@ -499,7 +506,7 @@ function renderTrips(){
   if(isAny(DST()))return renderAny();
   if(st.type==='ow')return renderOneWay();
   const all=trips();
-  if(!all.length){$('view').innerHTML=noData()||empty('No round trips match these filters.',DIRECT()?'Try turning off Direct only, or widen the stay or dates.':'Try more airports, a longer stay or a wider date range.');return;}
+  if(!all.length){$('view').innerHTML=noData()||empty('No round trips match these filters.',DIRECT()?'There may be no direct flights here on these dates. Try more airports, or widen the stay or dates.':'Try more airports, a longer stay or a wider date range.');return;}
   // keep the cheapest trip per departure week + airport pair so the list is varied
   const seen=new Set(),rows=[];for(const r of all){const k=r.k+r.o+r.h+r.d1.slice(0,8)+Math.floor(+r.d1.slice(8)/8);if(seen.has(k))continue;seen.add(k);rows.push(r);if(rows.length>=150)break;}
   const shown=rows.slice(0,st.limit);
@@ -525,7 +532,7 @@ function owCard(r,best){
 }
 function renderOneWay(){
   const rows=oneway();
-  if(!rows.length){$('view').innerHTML=noData()||empty('No flights match these filters.',DIRECT()?'Some airports have no direct flights. Try turning off Direct only.':'Try more airports or a wider date range.');return;}
+  if(!rows.length){$('view').innerHTML=noData()||empty('No flights match these filters.',DIRECT()?'Some airports have no direct flights here. Try more airports or a wider date range.':'Try more airports or a wider date range.');return;}
   const shown=rows.slice(0,st.limit);
   $('view').innerHTML=srcNote()+uncNote(rows,'flights')+`<div class="lead"><span>${rows.length} flights ${st.owDir==='to'?'to':'from'} ${esc(PLACE())}, cheapest first</span><span>One-way price for 1 adult${st.bag?', with bag':''}</span></div>
   <div class="list two">${shown.map((r,i)=>owCard(r,i===0)).join('')}</div>${moreBtn(shown.length,rows.length)}
@@ -632,7 +639,7 @@ function renderAny(){
   const direct=DIRECT(),rt=st.type==='rt';
   if(!ANY){$('view').innerHTML=empty('No anywhere prices yet.','They are added while the Anywhere scan runs (once a day).');return;}
   const rows=anyRows();
-  if(!rows.length){$('view').innerHTML=empty('Nothing matches these filters.',`Try ${direct?'turning off Direct only, ':''}more airports, ${rt?'a longer stay, ':''}a wider date range or a higher max price.`);return;}
+  if(!rows.length){$('view').innerHTML=empty('Nothing matches these filters.',`Try more airports, ${rt?'a longer stay, ':''}a wider date range or a higher max price.`);return;}
   const inTxt=n=>n<=0?'today':n===1?'tomorrow':n<14?`in ${n} days`:n<60?`in ${Math.round(n/7)} weeks`:`in ${Math.round(n/30.4)} months`;
   const why=r=>{const x=[];
     if(r.save>=15)x.push(`<span class="tag direct">${r.save}% under usual</span>`);
@@ -663,7 +670,7 @@ const skr=v=>v==null?'–':(v>0?'+':v<0?'−':'')+kr(Math.abs(v))+' kr';
 function renderPat(){
   const P=PAT&&(PAT.by_dest?(PAT.by_dest[DST()]&&{checks:PAT.checks,since:PAT.since,...PAT.by_dest[DST()]}):DST()==='KEF'?PAT:null);
   if(!P||!P.checks){$('view').innerHTML=empty('No patterns yet.','Patterns show up after a few price checks. Come back in a few days.');return;}
-  const k=st.stops==='direct'?'direct':'any',ENOUGH=30;
+  const k='direct',ENOUGH=30;
   const lead=`<div class="lead"><span>Based on ${kr(P.checks)} check${P.checks===1?'':'s'} since ${P.since?fdd(P.since.slice(0,10)):'the start'}. Patterns get clearer after a few weeks.</span></div>`;
   // 1. by days before departure
   const mb=(P.moves_by_days_before?.[k]||[]),byB=new Map(mb.map(x=>[x.bucket,x]));
@@ -733,7 +740,6 @@ function watchForm(){
      <div class="presets">${[1,2,3,6].map(m=>`<button type="button" data-m="${m}">${m} month${m>1?'s':''}</button>`).join('')}</div></div>
    ${chips('wout','Fly out from',APTS,W.out)}${chips('whome','Fly home to',APTS,W.home)}
    <div class="f"><span class="t">Good enough at (kr, round trip)</span><input type="number" inputmode="numeric" id="wTarget" value="${W.target}" placeholder="2200"></div>
-   <div class="f"><span class="t">Flights</span><label class="sw" style="min-height:42px"><input type="checkbox" id="wDirect" ${W.direct?'checked':''}>Direct only</label></div>
    <div class="f"><span class="t">PIN (6 digits)</span><input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" id="wPin" value="${esc(getPin())}" placeholder="6-digit PIN"></div>
   </div>
   <div class="act"><button class="btn" id="wSave" type="button">Add watch</button><span class="msg" id="wMsg" role="status"></span></div></details>`;
@@ -752,7 +758,6 @@ function wireWatchForm(){
   [['wName','name'],['wFrom','from'],['wTo','to'],['wMin','min'],['wMax','max'],['wTarget','target']].forEach(([id,k])=>{const e=$(id);e.oninput=()=>{W[k]=e.value}});
   F.querySelectorAll('[data-set=wout] input,[data-set=whome] input').forEach(i=>i.onchange=()=>{const s=i.closest('[data-set]').dataset.set==='wout'?W.out:W.home;i.checked?s.add(i.value):s.delete(i.value)});
   F.querySelectorAll('.presets button').forEach(b=>b.onclick=()=>{const c=Math.round(+b.dataset.m*30.4);W.min=c-5;W.max=c+5;$('wMin').value=W.min;$('wMax').value=W.max});
-  $('wDirect').onchange=e=>{W.direct=e.target.checked};
   $('wSave').onclick=async()=>{
     const min=+W.min,max=+W.max;
     if(!W.from||!W.to)return wMsg('Pick both dates for the trip window.');
@@ -825,7 +830,7 @@ function srcNote(){
   if(isC(DST())){const ks=DCODES(),f=ks.filter(followed);return `<p class="srcnote">All ${ks.length} airport${ks.length===1?'':'s'} in ${esc(nm(DST()))} the Anywhere scan covers: ${esc(ks.map(nm).join(', '))}. Prices from the Anywhere scan (Google Flights, once a day)${f.length?`, and twice-daily checks for ${esc(f.map(nm).join(', '))}`:''}.</p>`;}
   if(!followed(DST()))return `<p class="srcnote">Prices from the Anywhere scan (Google Flights, once a day). ${followBtn()} to add checks twice a day, flight times, changes and patterns.</p>`;
   const rs=destRoutes(),tp=rs.filter(r=>L.src?.[r]==='tp'),an=rs.filter(r=>L.src?.[r]==='anywhere');
-  if(an.length&&!tp.length)return `<p class="srcnote">${an.length===rs.length?'These prices':'Some routes\' prices'} for ${esc(nm(DST()))} come from the Anywhere scan (Google Flights, next 6 months, no flight times) until the airport's own checks arrive, usually within minutes of adding it.</p>`;
+  if(an.length&&!tp.length)return `<p class="srcnote">${an.length===rs.length?'These prices':'Some routes\' prices'} for ${esc(nm(DST()))} come from Ryanair's own fares and the Anywhere scan (Google Flights, next 6 months) until the airport's own checks arrive, usually within minutes of adding it.</p>`;
   if(!tp.length)return '';
   return `<p class="srcnote">${tp.length===rs.length?'These are first prices':'Some routes show first prices'} for ${esc(nm(DST()))}, from Travelpayouts. They can miss days and cheaper fares. Google Flights prices replace them when they arrive, usually within 15 minutes of adding an airport.</p>`;
 }
@@ -998,16 +1003,16 @@ function openDPanel(pre){
 const ago=t=>{if(!t)return '';const m=Math.round((Date.now()-Date.parse(t))/6e4);return m<1?'just now':m<60?`${m} min ago`:m<1440?`${Math.round(m/60)} h ago`:new Date(t).toLocaleDateString('en-GB',{day:'numeric',month:'short'})};
 function destStatus(d){
   const S=L?.status||{},rs=[...APTS.map(a=>`${a}-${d.code}`),...APTS.map(a=>`${d.code}-${a}`)],xs=rs.map(r=>[r,S[r]]);
-  const g=xs.filter(([,x])=>x?.src==='google').length,a=xs.filter(([,x])=>x?.src==='anywhere').length,t=xs.filter(([,x])=>x?.src==='tp').length,tm=xs.filter(([,x])=>x?.times).length;
+  const g=xs.filter(([,x])=>x?.src==='google').length,a=xs.filter(([,x])=>x?.src==='anywhere'||x?.src==='ryanair').length,t=xs.filter(([,x])=>x?.src==='tp').length,tm=xs.filter(([,x])=>x?.times).length;
   const known=xs.some(([,x])=>x),last=xs.map(([,x])=>x?.at).filter(Boolean).sort().pop();
   let cls,txt;
   if(!known){cls='wait';txt=PENDING.has(d.code)?'Getting first prices…':'Waiting for the first price check';}
   else if(!g&&!a&&!t){cls='';txt='No flights found';}
-  else if(!g&&a){cls='part';txt=`Google prices from the Anywhere scan on ${a} of ${rs.length} routes${t?`, first prices on ${t} more`:''}. The full year of prices follows within minutes.`;}
+  else if(!g&&a){cls='part';txt=`Ryanair or Anywhere-scan prices on ${a} of ${rs.length} routes${t?`, first prices on ${t} more`:''}. The full year of prices follows within minutes.`;}
   else if(g&&tm>=g){cls='ok';txt=`Google prices with flight times, ${g} of ${rs.length} routes`;}
   else if(g){cls='part';txt=`Google prices on ${g} of ${rs.length} routes${t?`, first prices on ${t} more`:''}. Flight times on ${tm} so far; a few routes get them each run.`;}
   else{cls='wait';txt=`First prices on ${t} of ${rs.length} routes. Waiting for Google prices (about 10 min after adding).`;}
-  const rows=xs.map(([r,x])=>{const [o,de]=r.split('-');return `<tr><td>${esc(o)} → ${esc(de)}</td><td>${!x||!x.src?'None found':x.src==='google'?'Google':x.src==='anywhere'?'Google (Anywhere scan)':'Travelpayouts'}</td><td>${x?.src?kr(x.any):'–'}</td><td>${x?.src?kr(x.direct):'–'}</td><td>${x?.times?'Yes':'–'}</td></tr>`}).join('');
+  const rows=xs.map(([r,x])=>{const [o,de]=r.split('-');return `<tr><td>${esc(o)} → ${esc(de)}</td><td>${!x||!x.src?'None found':x.src==='google'?'Google':x.src==='anywhere'?'Google (Anywhere scan)':x.src==='ryanair'?'Ryanair':'Travelpayouts'}</td><td>${x?.src?kr(x.any):'–'}</td><td>${x?.src?kr(x.direct):'–'}</td><td>${x?.times?'Yes':'–'}</td></tr>`}).join('');
   return `<details><summary><span class="dot ${cls}" aria-hidden="true"></span><span><span class="dn">${esc(d.name)} (${esc(d.code)})</span><br><span class="ds">${esc(txt)}${last?` · updated ${ago(last)}`:''}</span></span>${DESTS.length>1?`<button type="button" class="rm" data-rm="${esc(d.code)}" aria-label="Remove ${esc(d.name)}">Remove</button>`:''}</summary>
     <table><thead><tr><th>Route</th><th>Prices from</th><th>Days</th><th>Direct</th><th>Times</th></tr></thead><tbody>${rows}</tbody></table></details>`;
 }

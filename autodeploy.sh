@@ -28,7 +28,7 @@ if ! cmp -s autodeploy.sh "$APP/autodeploy.sh"; then
 fi
 
 changed_api=0
-for f in api.py watches.py build.py tp.py patterns.py run.sh health.py; do
+for f in api.py watches.py build.py tp.py patterns.py run.sh health.py ryanair.py; do
   [ -f "$f" ] || continue
   if ! cmp -s "$f" "$APP/$f"; then
     cp "$f" "$APP/$f"

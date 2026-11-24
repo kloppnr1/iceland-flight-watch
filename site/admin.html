@@ -187,7 +187,7 @@ async function load(){
   // routes of the followed airports
   const dn=Object.fromEntries((D||[]).map(d=>[d.code,d.name]));
   const rows=st.sort(([a],[b])=>{const k=r=>{const [o,d]=r.split('-');return (dn[d]?d+'0'+o:o+'1'+d)};return k(a).localeCompare(k(b))}).map(([r,x])=>{const [o,d]=r.split('-');
-    const src=x.src==='google'?'Google':x.src==='anywhere'?'Google (Anywhere scan)':x.src==='tp'?'Travelpayouts':'None found';
+    const src=x.src==='google'?'Google':x.src==='anywhere'?'Google (Anywhere scan)':x.src==='ryanair'?'Ryanair':x.src==='tp'?'Travelpayouts':'None found';
     return `<tr><td class="nw">${esc(o)} → ${esc(d)}</td><td>${src}</td><td class="n">${x.any??'–'}</td><td class="n">${x.direct??'–'}</td>
       <td class="nw age ${x.at?ageCls(x.at,14,30):''}">${x.at?ago(x.at):'–'}</td><td class="nw age ${x.times_at?ageCls(x.times_at,30,54):''}">${x.times?ago(x.times_at):'–'}</td></tr>`}).join('');
   $('routes').innerHTML=st.length?`<div class="tw"><table><thead><tr><th>Route</th><th>Prices from</th><th class="n">Days priced</th><th class="n">Direct days</th><th>Prices updated</th><th>Flight times</th></tr></thead><tbody>${rows}</tbody></table></div>

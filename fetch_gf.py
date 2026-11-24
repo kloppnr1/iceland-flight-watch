@@ -19,7 +19,7 @@ and uploads each route when it is done. Routes it does not reach keep their earl
 them on a later run.
 
 --new-only: only the routes with no Google prices on the server yet, calendars only, for a destination that was
-just added: 3 routes at a time (GF_NEW_THREADS), all prices for every route first, then direct-only prices, each
+just added: 3 routes at a time (GF_NEW_THREADS), direct-only prices for every route first (the page shows direct flights only), then all prices, each
 calendar uploaded as soon as it is done (all prices for 10 routes in about 3-4 minutes, direct-only after that);
 prints "nothing new" and stops if there are none, "new routes done" at the end.
 Usage: python3 fetch_gf.py [--new-only] [folder]
@@ -99,7 +99,7 @@ else:
 routes = [(a, D) for D in DESTS for a in HOME] + [(D, a) for D in DESTS for a in HOME]
 # routes the server has no Google calendar for yet: first in line
 latest = site_json('/data/latest.json') or {}
-have = {r for r in latest.get('cal', {}) if latest.get('src', {}).get(r) not in ('tp', 'anywhere')}  # own Google calendar
+have = {r for r in latest.get('cal', {}) if latest.get('src', {}).get(r) not in ('tp', 'anywhere', 'ryanair')}  # own Google calendar
 if latest:
     new = [r for r in routes if f'{r[0]}-{r[1]}' not in have]
     st = latest.get('status', {})
@@ -230,7 +230,7 @@ def fetch_cal(o, d, kind):
 
 
 if NEW_ONLY:
-    # A just-added airport: GF_NEW_THREADS routes at a time, all prices first, then direct-only prices, each route
+    # A just-added airport: GF_NEW_THREADS routes at a time, direct-only prices first, then all prices, each route
     # sent to the server as soon as it is done (the page rebuilds after each upload). A route already sent is no
     # longer new, so a restarted run continues with the rest.
     from concurrent.futures import ThreadPoolExecutor
@@ -247,7 +247,7 @@ if NEW_ONLY:
             job.step('calendars', n_done[0], 2 * len(routes), f'{o}-{d} {kind}')
 
     with ThreadPoolExecutor(int(os.environ.get('GF_NEW_THREADS', 3))) as ex:
-        list(ex.map(one, [(o, d, k) for k in ['any', 'direct'] for o, d in routes]))
+        list(ex.map(one, [(o, d, k) for k in ['direct', 'any'] for o, d in routes]))  # direct first: the page shows direct flights
     prog['quick_sent'] = True; save_prog()
 else:
     for i_route, (o, d) in enumerate(routes):

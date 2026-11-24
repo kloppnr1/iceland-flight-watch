@@ -130,6 +130,19 @@ class Api(unittest.TestCase):
                             (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=8)).isoformat(timespec='seconds'))
         self.assertEqual((old['start'], old['p']), (DAY(1), [5]))
 
+    def test_ryanair_upload(self):
+        T = {'X-Upload-Token': 'tok'}
+        routes = {f'AAR-X{chr(65 + i)}Z': {'start': DAY(1), 'f': [[511, '10:25', '13:30', 0], 0]} for i in range(10)}
+        self.assertEqual(call('POST', '/api/fr', {'routes': routes}, **{'X-Upload-Token': 'no'})[0], 403)
+        self.assertEqual(call('POST', '/api/fr', {'routes': dict(list(routes.items())[:3])}, **T)[0], 400)  # too few
+        bad = {**routes, 'AAR-PMI': {'start': DAY(1), 'f': [[5, 'x', '', 0]]}}
+        self.assertEqual(call('POST', '/api/fr', {'routes': bad}, **T)[0], 400)
+        rebuilds.clear()
+        self.assertEqual(call('POST', '/api/fr', {'routes': routes}, **T), (200, {'saved': 10}))
+        d = json.load(open(os.path.join(os.environ['DATA_DIR'], 'fr.json')))
+        self.assertEqual(d['routes']['AAR-XAZ']['f'], [[511, '10:25', '13:30', 0], 0])
+        self.assertIn(('--build-only',), rebuilds)
+
     def test_calendar_upload(self):
         files = {f'{a}-KEF-any.txt': DAY(1) + '\n50 0 61\n' for a in ['CPH', 'BLL', 'AAL', 'HAM', 'OSL', 'ARN']}
         self.assertEqual(call('POST', '/api/cal', {'files': files}, **{'X-Upload-Token': 'bad'})[0], 403)

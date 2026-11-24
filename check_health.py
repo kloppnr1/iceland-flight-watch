@@ -69,8 +69,16 @@ def anywhere(A):
         problems.append(f'Anywhere prices last updated {hours(A["updated"]):.0f} hours ago (the scan runs daily).')
 
 
+def ryanair(F):
+    if not F.get('updated'):
+        problems.append('No Ryanair fares on the server.')
+    elif hours(F['updated']) > 18:
+        problems.append(f'Ryanair fares last updated {hours(F["updated"]):.0f} hours ago (the server fetches them 4 times a day; see /opt/flight-watch/ryanair.log).')
+
+
 check('/data/health.json', health)
 check('/data/latest.json', latest)
 check('/data/anywhere.json', anywhere)
+check('/data/fr.json', ryanair)
 print('\n'.join(problems) if problems else 'OK')
 sys.exit(1 if problems else 0)

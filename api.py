@@ -20,6 +20,9 @@ POST   /api/anywhere         -> prices to anywhere from the "anywhere" scan (hea
                                 "nod": {"AAL-LHR": {"days": 4, "flights": 120}} = confirmed no direct flights: full flight
                                 lists for that many days across the next 6 months had no nonstop flight
                                 (confirm_direct.py). Kept as nod; direct prices for a route replace it.
+POST   /api/fr               -> Ryanair's fares per day from ryanair.py (header X-Upload-Token):
+                                {"routes": {"AAR-PMI": {"start": "YYYY-MM-DD", "f": [0 | [price, dep, arr, days to arrival]]}}};
+                                replaces data/fr.json (at least 10 routes) and rebuilds the page.
 POST   /api/jobs             -> progress of a download job (jobreport.py; header X-Upload-Token):
                                 {"job", "run", "state": running|done|failed|stopped, "phase", "done", "total",
                                  "note", "errors", "last_error"}. Written to data/jobs.json for admin.html:
@@ -232,6 +235,8 @@ class H(BaseHTTPRequestHandler):
             return self.upload_anywhere()
         if self.path.rstrip('/') == '/api/jobs':
             return self.job_report()
+        if self.path.rstrip('/') == '/api/fr':
+            return self.upload_fr()
         if self.path.rstrip('/') != '/api/watches':
             return self.reply(404, {'error': 'not found'})
         if not self.ok_pin():
@@ -421,6 +426,42 @@ class H(BaseHTTPRequestHandler):
             json.dump({'updated': now, 'routes': routes, 'cal': cal, 'dcal': dcal, 'nod': nod}, open(path + '.tmp', 'w'), separators=(',', ':'))
             os.replace(path + '.tmp', path)
         self.reply(200, {'saved': len(new), 'routes': len(routes)})
+
+    def upload_fr(self):
+        """Ryanair's fares per day from ryanair.py: replaces data/fr.json, then the page is rebuilt."""
+        if not self.ok_token():
+            return
+        try:
+            n = int(self.headers.get('Content-Length', 0))
+            if n > 8000000:
+                raise ValueError('too big')
+            body = json.loads(self.rfile.read(n))
+            out = {}
+            for k, c in body['routes'].items():
+                if not re.fullmatch(r'[A-Z]{3}-[A-Z]{3}', k):
+                    raise ValueError('bad route')
+                datetime.date.fromisoformat(c['start'])
+                f = []
+                for x in c['f'][:400]:
+                    if not x:
+                        f.append(0)
+                        continue
+                    p, dep, arr, plus = x
+                    if not (re.fullmatch(r'(\d\d:\d\d)?', dep) and re.fullmatch(r'(\d\d:\d\d)?', arr)):
+                        raise ValueError('bad time')
+                    f.append([max(0, round(float(p))), dep, arr, int(plus)])
+                out[k] = {'start': c['start'], 'f': f}
+            if len(out) < 10:
+                raise ValueError('too few routes')
+        except Exception as e:
+            return self.reply(400, {'error': str(e)[:100]})
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+        path = os.path.join(DATA, 'fr.json')
+        with lock:
+            json.dump({'updated': now, 'routes': out}, open(path + '.tmp', 'w'), separators=(',', ':'))
+            os.replace(path + '.tmp', path)
+        rebuild('--build-only')
+        self.reply(200, {'saved': len(out)})
 
     def job_report(self):
         if not self.ok_token():

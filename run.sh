@@ -6,6 +6,12 @@
 # --build-only: no Travelpayouts fetch, just rebuild from the stored prices (api.py after each Google upload; the
 # lock queues it behind a running build, so no upload is left out).
 cd /opt/flight-watch || exit 1
+# Ryanair's own fares (ryanair.py, ~10 minutes) on the scheduled runs, when data/fr.json is over 5 hours old. Its own
+# lock and before the build lock, so uploads keep being built meanwhile; a failure keeps the earlier fares.
+FR=/srv/flight-watch/data/fr.json
+if [ $# -eq 0 ] && { [ ! -f "$FR" ] || [ -n "$(find "$FR" -mmin +300)" ]; }; then
+  flock -n /opt/flight-watch/.fr.lock timeout 1800 ./venv/bin/python ryanair.py --out "$FR" > /opt/flight-watch/ryanair.log 2>&1 || true
+fi
 exec 9>/opt/flight-watch/.run.lock
 flock 9
 set -a; . ./.env; set +a

@@ -35,6 +35,10 @@ NBO ZNZ JNB CPT DAR MRU SEZ ADD ACC LOS DSS SID RAI
 SYD MEL AKL""".split()
 SITES = [os.environ['SITE']] if os.environ.get('SITE') else ['https://fly.stromsparer.dk', 'https://fly.xn--strmsparer-2cb.dk']
 TOKEN = os.environ.get('UPLOAD_TOKEN', '').strip()
+# The page shows direct flights only, so only direct-only prices are looked up (half the lookups). They are sent as
+# both "cal" and "dcal". ANY_DIRECT_ONLY=0 brings back the all-prices lookups.
+DIRECT_ONLY = os.environ.get('ANY_DIRECT_ONLY', '1') != '0'
+SITE_D = set()  # routes the site has direct-only prices for
 
 
 def followed():
@@ -54,6 +58,7 @@ def site_ages():
         try:
             a = json.load(urllib.request.urlopen(urllib.request.Request(site + '/data/anywhere.json', headers={'User-Agent': 'flight-watch-anywhere'}), timeout=60))
             cal, dcal = a.get('cal') or {}, a.get('dcal') or {}
+            SITE_D.update(dcal)
             return {k: min(c.get('at', ''), (dcal.get(k) or {}).get('at', '')) for k, c in cal.items()}
         except Exception as e:
             print('could not read the Anywhere prices from', site, e, flush=True)
@@ -148,6 +153,8 @@ def upload(routes):
         n = (datetime.date.fromisoformat(max(m)) - d0).days + 1
         out['cal' if k == 'any' else 'dcal'][rk] = {'start': str(d0), 'p': [m.get(str(d0 + datetime.timedelta(days=i)), 0) for i in range(n)],
                                                     'win': sorted(wset.get((rk, k), []))}
+    if DIRECT_ONLY:  # direct flights only: the direct prices are the route's prices
+        out['cal'].update({rk: c for rk, c in out['dcal'].items() if c['p']})
     body = json.dumps(out).encode()
     for site in SITES:
         req = urllib.request.Request(site + '/api/anywhere', data=body, method='POST',
@@ -173,7 +180,7 @@ if UPLOAD_ONLY:
 
 found = {k: r for k, r in read_all().items() if r is not None}
 key = lambda j, k: (j[0], j[1], str(j[2]), k)
-todo = [j for j in jobs if key(j, 'any') not in found or key(j, 'direct') not in found]
+todo = [j for j in jobs if key(j, 'direct') not in found or (not DIRECT_ONLY and key(j, 'any') not in found)]
 lock = threading.Lock()
 pending, n, t0 = set(), [0], time.time()
 failed = [0]
@@ -196,7 +203,27 @@ def save(j, k, r):
         pending.add((f'{j[0]}-{j[1]}', k))
 
 
+def work_direct(j):
+    rd = lookup(j, 'direct')
+    if rd == [] and has_direct(j):  # Google sometimes answers empty for a route with direct flights: ask once more
+        time.sleep(5)
+        rd = lookup(j, 'direct')
+    if rd is not None:
+        save(j, 'direct', rd)
+    else:
+        with lock:
+            failed[0] += 1
+
+
+def has_direct(j):
+    return f'{j[0]}-{j[1]}' in SITE_D or any(found.get(key((j[0], j[1], a, b), 'direct')) for a, b in wins)
+
+
 def work(j):
+    if DIRECT_ONLY:
+        if key(j, 'direct') not in found:
+            work_direct(j)
+        return progress(j)
     r = found.get(key(j, 'any'))
     if r is None:
         r = lookup(j, 'any')
@@ -215,6 +242,10 @@ def work(j):
             rd = lookup(j, 'direct')  # saving "no direct flights" (most routes really have none, so only once)
         if rd is not None:
             save(j, 'direct', rd)
+    progress(j)
+
+
+def progress(j):
     with lock:
         n[0] += 1
         if n[0] % 25 == 0 or n[0] == len(todo):
